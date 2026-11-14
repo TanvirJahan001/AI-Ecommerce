@@ -1,0 +1,10 @@
+BEGIN;
+ALTER TABLE orders DROP CONSTRAINT orders_discount_minor_check;
+ALTER TABLE orders ADD CONSTRAINT orders_discount_minor_check CHECK(discount_minor>=0 AND discount_minor<=items_minor);
+ALTER TABLE order_items DROP CONSTRAINT order_items_discount_minor_check;
+ALTER TABLE order_items ADD CONSTRAINT order_items_discount_minor_check CHECK(discount_minor>=0 AND discount_minor<=unit_minor*quantity);
+CREATE TABLE discounts(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),code text NOT NULL UNIQUE CHECK(code=upper(code)),amount_minor bigint NOT NULL CHECK(amount_minor>0),usage_limit integer NOT NULL CHECK(usage_limit>0),used_count integer NOT NULL DEFAULT 0 CHECK(used_count>=0 AND used_count<=usage_limit),starts_at timestamptz NOT NULL DEFAULT now(),ends_at timestamptz NOT NULL,active boolean NOT NULL DEFAULT false,CHECK(ends_at>starts_at));
+CREATE TABLE discount_redemptions(discount_id uuid NOT NULL REFERENCES discounts,order_id uuid NOT NULL UNIQUE REFERENCES orders,amount_minor bigint NOT NULL CHECK(amount_minor>0),created_at timestamptz NOT NULL DEFAULT now(),PRIMARY KEY(discount_id,order_id));
+CREATE TABLE order_item_unit_allocations(order_item_id uuid NOT NULL REFERENCES order_items,unit_index integer NOT NULL CHECK(unit_index>=0),gross_minor bigint NOT NULL CHECK(gross_minor>=0),discount_minor bigint NOT NULL CHECK(discount_minor>=0 AND discount_minor<=gross_minor),PRIMARY KEY(order_item_id,unit_index));
+INSERT INTO store_settings(key,value) VALUES('discounts_enabled','false');
+COMMIT;
