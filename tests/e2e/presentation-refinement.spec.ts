@@ -1,17 +1,74 @@
+const origin = process.env.APP_ORIGIN || "http://localhost:3000";
+import { databasePoolConfig } from "../../src/lib/database-config";
 import { test, expect } from "@playwright/test";
 import { Pool } from "pg";
-import { createHash } from "node:crypto";
+import { randomUUID, createHash } from "node:crypto";
 
 test("readable charger facts and responsive owned history at 360px, 390px and desktop", async ({
   browser,
 }) => {
+  // Build ownership through the real API, rather than depending on a prior run's
+  // private cookie file from a potentially different application database.
   const context = await browser.newContext({
-    storageState: "/tmp/refinement-customer-state.json",
+    extraHTTPHeaders: { Origin: origin },
   });
+  const api = context.request;
+  const catalog = await (
+    await api.get(`${origin}/api/store?resource=catalog`)
+  ).json();
+  const variant = catalog.products.find(
+    (p: { slug: string }) => p.slug === "clear-case",
+  ).variants[0];
+  expect(
+    (
+      await api.post(`${origin}/api/store`, {
+        data: { action: "cart.add", variant_id: variant.id, quantity: 1 },
+      })
+    ).ok(),
+  ).toBeTruthy();
+  const quote = await (
+    await api.get(`${origin}/api/store?resource=cart`)
+  ).json();
+  const checkout = await api.post(`${origin}/api/store`, {
+    data: {
+      action: "checkout",
+      idempotency_key: randomUUID(),
+      guest_name: "Fictional Responsive Buyer",
+      guest_phone: "+8801712345678",
+      payment_method: "cod",
+      expected_total_minor: quote.total_minor,
+      address: {
+        district: "Dhaka",
+        city_upazila: "Dhaka",
+        area: "Fictional",
+        street: "Fictional Street",
+      },
+    },
+  });
+  expect(checkout.ok()).toBeTruthy();
+  const { order_id } = await checkout.json();
+  expect(
+    (
+      await api.post(`${origin}/api/auth/sign-up/email`, {
+        data: {
+          email: `responsive-${randomUUID()}@example.test`,
+          password: "Fictional-Responsive-Only-123!",
+          name: "Fictional Responsive Buyer",
+        },
+      })
+    ).ok(),
+  ).toBeTruthy();
+  expect(
+    (
+      await api.post(`${origin}/api/store`, {
+        data: { action: "account.link", order_id },
+      })
+    ).ok(),
+  ).toBeTruthy();
   const page = await context.newPage();
   for (const width of [360, 390, 1440]) {
     await page.setViewportSize({ width, height: 900 });
-    await page.goto("http://localhost:3000/products/usb-c-charger");
+    await page.goto(`${origin}/products/usb-c-charger`);
     await expect(
       page.getByText("USB Power Delivery", { exact: true }),
     ).toBeVisible();
@@ -35,7 +92,7 @@ test("readable charger facts and responsive owned history at 360px, 390px and de
       path: `artifacts/refinement/after/specifications-${width}.png`,
       fullPage: true,
     });
-    await page.goto("http://localhost:3000/account");
+    await page.goto(`${origin}/account`);
     await expect(page.locator(".history-card").first()).toBeVisible();
     await expect(page.locator(".history-card strong").first()).toContainText(
       "BDT",
@@ -100,10 +157,15 @@ test("friendly signed-out and denied states retain a safe destination; external 
 test("expired anonymous session is explained and can restart without restoring prior order grants", async ({
   page,
 }) => {
-  const db = new Pool({ connectionString: process.env.DATABASE_URL });
+  const db = new Pool(databasePoolConfig());
   try {
     await page.goto("/");
     await expect(page.getByLabel("Search", { exact: true })).toBeVisible();
+    await expect
+      .poll(async () =>
+        (await page.context().cookies()).some((c) => c.name === "shop"),
+      )
+      .toBe(true);
     const cookie = (await page.context().cookies()).find(
       (c) => c.name === "shop",
     )!;
@@ -175,12 +237,13 @@ test("existing MFA owner overview uses persisted queue counts and COD controls f
   browser,
 }) => {
   const context = await browser.newContext({
-    storageState: "/tmp/store-owner-state.json",
+    storageState:
+      process.env.STORE_OWNER_STORAGE || "/tmp/store-owner-state.json",
   });
   const page = await context.newPage();
   for (const width of [360, 390, 1440]) {
     await page.setViewportSize({ width, height: 1000 });
-    await page.goto("http://localhost:3000/admin");
+    await page.goto(`${origin}/admin`);
     await expect(
       page.getByRole("heading", { name: "Work requiring attention" }),
     ).toBeVisible();

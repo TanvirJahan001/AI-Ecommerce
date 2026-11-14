@@ -1,4 +1,6 @@
-import { test, expect } from "@playwright/test";
+const origin = process.env.APP_ORIGIN || "http://localhost:3000";
+import { test, expect, request } from "@playwright/test";
+import { randomUUID } from "node:crypto";
 test.use({
   storageState:
     process.env.STORE_OWNER_STORAGE || "/tmp/store-owner-state.json",
@@ -53,6 +55,44 @@ test("MFA-authenticated owner operates inventory and reviews commercial queues",
     path: "artifacts/admin-inventory.png",
     fullPage: true,
   });
+  const buyer = await request.newContext({
+    storageState: { cookies: [], origins: [] },
+    baseURL: origin,
+    extraHTTPHeaders: { Origin: origin },
+  });
+  // Fresh databases have no historical orders. Create this test's own order
+  // through checkout rather than depending on another test or preserved data.
+  expect(
+    (
+      await buyer.post("/api/store", {
+        headers: { Origin: origin },
+        data: { action: "cart.add", variant_id: variant.id, quantity: 1 },
+      })
+    ).ok(),
+  ).toBeTruthy();
+  const quote = await (await buyer.get("/api/store?resource=cart")).json();
+  expect(
+    (
+      await buyer.post("/api/store", {
+        headers: { Origin: origin },
+        data: {
+          action: "checkout",
+          idempotency_key: randomUUID(),
+          guest_name: "Fictional Owner Workflow Buyer",
+          guest_phone: "+8801712345678",
+          payment_method: "cod",
+          expected_total_minor: quote.total_minor,
+          address: {
+            district: "Dhaka",
+            city_upazila: "Dhaka",
+            area: "Fictional",
+            street: "Fictional Street",
+          },
+        },
+      })
+    ).ok(),
+  ).toBeTruthy();
+  await buyer.dispose();
   await page.getByRole("button", { name: "Orders", exact: true }).click();
   await page
     .getByRole("button", { name: /Open Order / })
@@ -138,15 +178,16 @@ test("owner content and discounts persist and become visible to shoppers", async
     "Action recorded successfully",
   );
   const guest = await browser.newContext({
+    storageState: { cookies: [], origins: [] },
     viewport: { width: 390, height: 844 },
   });
   const shopper = await guest.newPage();
-  await shopper.goto("http://localhost:3000/policies/browser-verification");
+  await shopper.goto(`${origin}/policies/browser-verification`);
   await expect(shopper.getByText(content, { exact: true })).toBeVisible();
-  await shopper.goto("http://localhost:3000/products/usb-c-charger");
+  await shopper.goto(`${origin}/products/usb-c-charger`);
   await shopper.getByRole("button", { name: "Add to cart" }).click();
   await expect(shopper.getByRole("status")).toContainText("Added to your cart");
-  await shopper.goto("http://localhost:3000/checkout");
+  await shopper.goto(`${origin}/checkout`);
   await shopper.getByLabel("Discount code", { exact: true }).fill(code);
   await shopper.getByRole("button", { name: "Apply discount" }).click();
   await expect(shopper.getByText("−BDT 10.00", { exact: true })).toBeVisible();
@@ -188,7 +229,7 @@ test("owner configures a local delivery rate through Settings", async ({
 test("owner drafts, specifies and publishes a SKU without reassignment to another family", async ({
   page,
 }) => {
-  const headers = { Origin: "http://localhost:3000" };
+  const headers = { Origin: origin };
   const suffix = Date.now();
   const item = {
     action: "admin.command",

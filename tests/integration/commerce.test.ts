@@ -1,3 +1,4 @@
+import { testPoolConfig } from "../../src/lib/database-config";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { Pool } from "pg";
 import { readFile } from "node:fs/promises";
@@ -23,13 +24,9 @@ import {
   stockReceipt,
   getRefundEligibility,
 } from "../../src/modules/commerce/service";
-const url = process.env.TEST_DATABASE_URL;
 const schema = `test_${randomUUID().replaceAll("-", "")}`;
-const admin = new Pool({ connectionString: url });
-const pool = new Pool({
-  connectionString: url,
-  options: `-c search_path=${schema},public`,
-});
+const admin = new Pool(testPoolConfig());
+const pool = new Pool(testPoolConfig(process.env, schema));
 const actor = { id: "test-owner", role: "owner" as const };
 let variant: string;
 function input(key = randomUUID()) {
@@ -66,7 +63,7 @@ async function paid(id: string) {
     }),
   );
 }
-describe.skipIf(!url)("PostgreSQL commerce invariants", () => {
+describe("PostgreSQL commerce invariants", () => {
   beforeAll(async () => {
     await admin.query(`CREATE SCHEMA ${schema}`);
     for (const f of [

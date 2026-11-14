@@ -8,7 +8,7 @@ export default defineConfig({
   expect: { timeout: 15000 },
   workers: 1,
   use: {
-    baseURL: "http://localhost:3000",
+    baseURL: process.env.APP_ORIGIN || "http://localhost:3000",
     headless: true,
     launchOptions: {
       executablePath: "/opt/google/chrome/chrome",

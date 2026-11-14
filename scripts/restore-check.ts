@@ -6,6 +6,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 if (process.env.NODE_ENV === "production")
   throw Error("Use isolated test database for restore verification");
+// This legacy utility creates a whole disposable DATABASE. It must never dump
+// a shared Supabase database or use a restricted runtime role as administrator.
+if (process.env.DATABASE_PROVIDER === "supabase")
+  throw Error(
+    "Legacy whole-database restore-check is disabled for Supabase. Use the application-schema backup and isolated restore procedure in README; never restore managed schemas.",
+  );
 const url = new URL(process.env.DATABASE_URL!);
 const pool = new Pool({ connectionString: url.toString() });
 const target = `restore_${randomUUID().replaceAll("-", "")}`;

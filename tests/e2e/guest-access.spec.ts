@@ -1,9 +1,10 @@
+import { databasePoolConfig } from "../../src/lib/database-config";
 import { test, expect, request } from "@playwright/test";
 import { Pool } from "pg";
 import { randomUUID } from "node:crypto";
 test("guest proof survives browser closure, expires, and recovers only with challenge; checkout replay survives cleared cart", async () => {
-  const db = new Pool({ connectionString: process.env.DATABASE_URL });
-  const origin = "http://localhost:3000";
+  const db = new Pool(databasePoolConfig());
+  const origin = process.env.APP_ORIGIN || "http://localhost:3000";
   const shopper = await request.newContext({
     baseURL: origin,
     extraHTTPHeaders: { Origin: origin },

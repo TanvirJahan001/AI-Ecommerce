@@ -53,20 +53,20 @@ Commercial launch is blocked by owner-approved catalog/spec source, authenticity
 
 Owner is decision owner unless noted. “Open” means proposed baseline is not approval.
 
-| ID   | Question                                         | Status                                                                               | Owner | Detail                          |
-| ---- | ------------------------------------------------ | ------------------------------------------------------------------------------------ | ----- | ------------------------------- |
-| D-01 | Name, brand, logo                                | Open                                                                                 | Owner | [Design](Design.md)             |
-| D-02 | Initial catalog and sourcing/authenticity checks | Open                                                                                 | Owner | [DATA](DATA.md)                 |
-| D-03 | English, Bangla, or bilingual launch             | Open; recommend English first, Unicode-safe content and Bangla-ready fonts           | Owner | [Design](Design.md)             |
-| D-04 | Return/cancellation/warranty terms               | Open; legal/business review                                                          | Owner | [PRD](PRD.md#commerce-rules)    |
-| D-05 | Enable COD and confirmation method               | Open                                                                                 | Owner | [USERS](USERS.md)               |
-| D-06 | Online provider and merchant eligibility         | Open; bKash/SSLCOMMERZ research only                                                 | Owner | [Architecture](Architecture.md) |
-| D-07 | Courier, delivery coverage/rates, restrictions   | Open                                                                                 | Owner | [DELIVERY](DELIVERY.md)         |
-| D-08 | Tax/invoice obligations                          | Open; professional verification                                                      | Owner | [SECURITY](SECURITY.md)         |
-| D-09 | Owner assignment and future staffing             | Owner-only implemented; future staffing open                                         | Owner | [USERS](USERS.md)               |
-| D-10 | Stack and hosting                                | Confirmed Next.js/TypeScript/PostgreSQL user baseline; local implementation verified | Owner | [Architecture](Architecture.md) |
-| D-11 | Visual direction                                 | Proposed navy/teal/amber                                                             | Owner | [Design](Design.md)             |
-| D-12 | Commercial launch boundary                       | Proposed phase 2 complete                                                            | Owner | [Phases](Phases.md)             |
+| ID   | Question                                         | Status                                                                                                | Owner | Detail                          |
+| ---- | ------------------------------------------------ | ----------------------------------------------------------------------------------------------------- | ----- | ------------------------------- |
+| D-01 | Name, brand, logo                                | Open                                                                                                  | Owner | [Design](Design.md)             |
+| D-02 | Initial catalog and sourcing/authenticity checks | Open                                                                                                  | Owner | [DATA](DATA.md)                 |
+| D-03 | English, Bangla, or bilingual launch             | Open; recommend English first, Unicode-safe content and Bangla-ready fonts                            | Owner | [Design](Design.md)             |
+| D-04 | Return/cancellation/warranty terms               | Open; legal/business review                                                                           | Owner | [PRD](PRD.md#commerce-rules)    |
+| D-05 | Enable COD and confirmation method               | Open                                                                                                  | Owner | [USERS](USERS.md)               |
+| D-06 | Online provider and merchant eligibility         | Open; bKash/SSLCOMMERZ research only                                                                  | Owner | [Architecture](Architecture.md) |
+| D-07 | Courier, delivery coverage/rates, restrictions   | Open                                                                                                  | Owner | [DELIVERY](DELIVERY.md)         |
+| D-08 | Tax/invoice obligations                          | Open; professional verification                                                                       | Owner | [SECURITY](SECURITY.md)         |
+| D-09 | Owner assignment and future staffing             | Owner-only implemented; future staffing open                                                          | Owner | [USERS](USERS.md)               |
+| D-10 | Stack and hosting                                | Confirmed Next.js/TypeScript/PostgreSQL and self-hosted Supabase DB host; intended connection pending | Owner | [Architecture](Architecture.md) |
+| D-11 | Visual direction                                 | Proposed navy/teal/amber                                                                              | Owner | [Design](Design.md)             |
+| D-12 | Commercial launch boundary                       | Proposed phase 2 complete                                                                             | Owner | [Phases](Phases.md)             |
 
 ## Implemented scope checkpoint — 2026-11-14
 

@@ -1,5 +1,9 @@
 import { writeFile } from "node:fs/promises";
 import { randomBytes } from "node:crypto";
+if (process.env.DATABASE_PROVIDER === "supabase")
+  throw Error(
+    "Supabase requires explicit private PostgreSQL configuration; setup:local only creates embedded development defaults.",
+  );
 try {
   await writeFile(
     ".env.local",

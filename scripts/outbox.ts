@@ -1,15 +1,26 @@
+import { databasePoolConfig } from "../src/lib/database-config";
 import { Pool } from "pg";
 import { transaction } from "../src/modules/commerce/service";
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const pool = new Pool(databasePoolConfig());
 if (
   process.env.NODE_ENV === "production" ||
   process.env.STORE_DEV_ADAPTERS !== "true"
 )
   throw Error("Local notification adapter requires explicit development mode");
+const fixtureJob = process.env.STORE_TEST_OUTBOX_ID;
+if (
+  fixtureJob &&
+  (process.env.STORE_TEST_FIXTURES !== "true" ||
+    !/^[0-9a-f-]{36}$/i.test(fixtureJob))
+)
+  throw Error(
+    "A specific outbox fixture requires STORE_TEST_FIXTURES=true and a valid fictional job ID",
+  );
 try {
   const count = await transaction(pool, async (c) => {
     const jobs = await c.query(
-      "select * from outbox where status in ('pending','failed') and next_attempt_at<=now() order by created_at for update skip locked limit 25",
+      "select * from outbox where status in ('pending','failed') and next_attempt_at<=now() and ($1::uuid is null or id=$1) order by created_at for update skip locked limit 25",
+      [fixtureJob ?? null],
     );
     for (const job of jobs.rows) {
       if (process.env.LOCAL_NOTIFICATION_FAIL === "true") {

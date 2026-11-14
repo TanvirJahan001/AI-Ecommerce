@@ -1,0 +1,37 @@
+{
+  "date": "2026-11-14",
+  "scope": "Disposable standalone PostgreSQL 18.6 private-schema fixtures and isolated committed-dependency checkout; NOT intended Supabase",
+  "base_commit": "e1abc88263832e42b992b4d33e4a161ab05aa753",
+  "intended_supabase": {
+    "connected": false,
+    "version": "unknown",
+    "http_endpoint": "http://localhost:8000",
+    "http_probe": "unreachable / status000",
+    "switch_performed": false,
+    "missing": "Private PostgreSQL config file path, intended installation identity and dedicated/shared status"
+  },
+  "checks": {
+    "committed_install": "pass: Node24.22.3/npm11.19.1 npm ci --legacy-peer-deps; hashes unchanged",
+    "format": "pass",
+    "lint": "pass",
+    "types": "pass",
+    "unit": "25 passed",
+    "build": "pass webpack with fictional DB/auth config",
+    "postgresql": "24 passed, separate boundary_tests database",
+    "migrations": "16 commerce journal entries, repeat commerce+BetterAuth clean",
+    "auth": "fictional owner MFA enrollment/challenge, owner/customer denial and deactivation passed",
+    "browser": "18 passed final full run; earlier failed/interrupted attempts in run record",
+    "notifications": "local adapter failure/retry/dedupe passed; no real messages",
+    "restart": "exact commerce/auth/outbox fingerprints and MFA owner API/session survived app restart",
+    "restore": "private schema only; every app table matched; fake auth/storage/unrelated relation identities unchanged",
+    "api_roles": "12 direct SQL negative operations passed; actual PostgREST HTTP denial unverified"
+  },
+  "preservation": "Original .env.local, auth secret, owner/business database untouched; package.json/package-lock.json hashes unchanged; no actual transfer",
+  "external": {
+    "payment_sandbox": "unverified",
+    "real_messages": "not sent",
+    "production_deployment": "not performed",
+    "commercial_ready": false
+  },
+  "fixture_teardown": "App3001 and disposable PostgreSQL55434 stopped. persistent=false automatically removed fictional cluster; reports remain; original store unaffected. Recreate fixtures before repeat checks."
+}

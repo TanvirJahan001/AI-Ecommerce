@@ -1,3 +1,4 @@
+const origin = process.env.APP_ORIGIN || "http://localhost:3000";
 import { test, expect } from "@playwright/test";
 
 test("mobile shopper selects exact case, checks out, and tracks verified development payment", async ({
@@ -83,7 +84,7 @@ test("mobile shopper selects exact case, checks out, and tracks verified develop
   expect(order.payments[0].status).toBe("succeeded");
   const orderId = String(order.order.id);
   const registration = await page.request.post("/api/auth/sign-up/email", {
-    headers: { origin: "http://localhost:3000" },
+    headers: { origin },
     data: {
       email: `browser-${Date.now()}@example.test`,
       password: "Fictional-Only-Password-123!",

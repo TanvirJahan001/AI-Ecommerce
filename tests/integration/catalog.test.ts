@@ -1,18 +1,15 @@
+import { testPoolConfig } from "../../src/lib/database-config";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { Pool } from "pg";
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { saveVariantDetails } from "../../src/modules/catalog/commands";
 import { transaction } from "../../src/modules/commerce/service";
-const url = process.env.TEST_DATABASE_URL;
 const schema = `catalog_${randomUUID().replaceAll("-", "")}`;
-const admin = new Pool({ connectionString: url });
-const pool = new Pool({
-  connectionString: url,
-  options: `-c search_path=${schema},public`,
-});
+const admin = new Pool(testPoolConfig());
+const pool = new Pool(testPoolConfig(process.env, schema));
 const owner = { id: "fictional-owner", role: "owner" as const };
-describe.skipIf(!url)("owner catalog persistence", () => {
+describe("owner catalog persistence", () => {
   beforeAll(async () => {
     await admin.query(`CREATE SCHEMA ${schema}`);
     for (const file of [

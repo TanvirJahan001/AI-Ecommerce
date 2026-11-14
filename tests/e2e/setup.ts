@@ -1,3 +1,9 @@
+// Explicit opt-in: these tools mutate fictional fixtures, never a preserved store.
+if (process.env.STORE_TEST_FIXTURES !== "true")
+  throw Error(
+    "Set STORE_TEST_FIXTURES=true only for a disposable fictional application database.",
+  );
+import { databasePoolConfig } from "../../src/lib/database-config";
 import { Pool } from "pg";
 import { randomUUID } from "node:crypto";
 import { transaction, stockReceipt } from "../../src/modules/commerce/service";
@@ -7,7 +13,7 @@ export default async function setup() {
     process.env.STORE_DEV_ADAPTERS !== "true"
   )
     throw Error("Browser fixtures require isolated development mode");
-  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+  const pool = new Pool(databasePoolConfig());
   try {
     const rows = (
       await pool.query(

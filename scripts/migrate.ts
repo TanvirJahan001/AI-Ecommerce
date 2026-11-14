@@ -1,8 +1,13 @@
 import { Pool } from "pg";
 import { readdir, readFile } from "node:fs/promises";
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+import {
+  databasePoolConfig,
+  assertDatabaseSchema,
+} from "../src/lib/database-config";
+const pool = new Pool(databasePoolConfig(process.env, "migration", 1));
 const client = await pool.connect();
 try {
+  await assertDatabaseSchema(client);
   await client.query(
     "select pg_advisory_lock(hashtext('store-schema-migrations'))",
   );

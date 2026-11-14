@@ -1,3 +1,8 @@
+// Explicit opt-in: these tools mutate fictional fixtures, never a preserved store.
+if (process.env.STORE_TEST_FIXTURES !== "true")
+  throw Error(
+    "Set STORE_TEST_FIXTURES=true only for a disposable fictional application database.",
+  );
 import { access, writeFile } from "node:fs/promises";
 import { randomBytes } from "node:crypto";
 import { auth, authPool } from "../src/lib/auth";
@@ -9,7 +14,10 @@ if (
 try {
   let exists = false;
   try {
-    await access("/tmp/store-owner-credentials.json");
+    await access(
+      process.env.STORE_OWNER_CREDENTIALS ||
+        "/tmp/store-owner-credentials.json",
+    );
     exists = true;
   } catch {}
   if (exists) {
@@ -34,7 +42,8 @@ try {
       [result.user.id],
     );
     await writeFile(
-      "/tmp/store-owner-credentials.json",
+      process.env.STORE_OWNER_CREDENTIALS ||
+        "/tmp/store-owner-credentials.json",
       JSON.stringify(credentials),
       { flag: "wx", mode: 0o600 },
     );

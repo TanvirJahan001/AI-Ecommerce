@@ -1,0 +1,90 @@
+{
+  "scope": "Disposable standalone PostgreSQL 18.6 fixture ONLY; not the intended Supabase installation",
+  "target": "127.0.0.1:55434/boundary_fixture",
+  "checks": [
+    {
+      "name": "Restricted runtime insert/update/select persists across new pool",
+      "result": "PASS"
+    },
+    {
+      "name": "Runtime private-schema CREATE denied",
+      "result": "PASS"
+    },
+    {
+      "name": "Runtime TRUNCATE denied",
+      "result": "PASS"
+    },
+    {
+      "name": "Runtime Supabase-managed-auth sentinel SELECT denied",
+      "result": "PASS"
+    },
+    {
+      "name": "Runtime managed-storage sentinel SELECT denied",
+      "result": "PASS"
+    },
+    {
+      "name": "anon commerce SELECT denied",
+      "result": "PASS"
+    },
+    {
+      "name": "anon BetterAuth SELECT denied",
+      "result": "PASS"
+    },
+    {
+      "name": "anon sequence use denied",
+      "result": "PASS"
+    },
+    {
+      "name": "anon function EXECUTE denied",
+      "result": "PASS"
+    },
+    {
+      "name": "authenticated commerce SELECT denied",
+      "result": "PASS"
+    },
+    {
+      "name": "authenticated BetterAuth SELECT denied",
+      "result": "PASS"
+    },
+    {
+      "name": "authenticated sequence use denied",
+      "result": "PASS"
+    },
+    {
+      "name": "authenticated function EXECUTE denied",
+      "result": "PASS"
+    },
+    {
+      "name": "service_role commerce SELECT denied",
+      "result": "PASS"
+    },
+    {
+      "name": "service_role BetterAuth SELECT denied",
+      "result": "PASS"
+    },
+    {
+      "name": "service_role sequence use denied",
+      "result": "PASS"
+    },
+    {
+      "name": "service_role function EXECUTE denied",
+      "result": "PASS"
+    },
+    {
+      "name": "Runtime DELETE allowed",
+      "result": "PASS"
+    },
+    {
+      "name": "16 commerce migrations journaled; repeat migration/auth runs clean",
+      "result": "PASS"
+    },
+    {
+      "name": "Six BetterAuth core/MFA/rate-limit tables in private schema",
+      "result": "PASS"
+    },
+    {
+      "name": "Unrelated managed-schema sentinels remain intact",
+      "result": "PASS"
+    }
+  ]
+}

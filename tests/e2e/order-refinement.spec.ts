@@ -1,3 +1,5 @@
+const origin = process.env.APP_ORIGIN || "http://localhost:3000";
+import { databasePoolConfig } from "../../src/lib/database-config";
 import { test, expect } from "@playwright/test";
 import { Pool } from "pg";
 import { randomUUID } from "node:crypto";
@@ -11,7 +13,7 @@ import {
   updateShipment,
 } from "../../src/modules/commerce/service";
 import { formatBdtInput } from "../../src/lib/money-input";
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const pool = new Pool(databasePoolConfig());
 test.use({
   storageState:
     process.env.STORE_OWNER_STORAGE || "/tmp/store-owner-state.json",
@@ -114,7 +116,7 @@ test("paid unshipped cancellation refunds without a return and selected-order ac
     selected.getByRole("button", { name: "Confirm COD order", exact: true }),
   ).toHaveCount(0);
   const invalidCod = await page.request.post("/api/store", {
-    headers: { Origin: "http://localhost:3000" },
+    headers: { Origin: origin },
     data: {
       action: "admin.command",
       command: "cod.confirm",

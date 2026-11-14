@@ -1,5 +1,10 @@
+if (process.env.STORE_TEST_FIXTURES !== "true")
+  throw Error(
+    "Fictional seed requires STORE_TEST_FIXTURES=true on a disposable or new fictional development store.",
+  );
+import { databasePoolConfig } from "../src/lib/database-config";
 import { Pool } from "pg";
-const p = new Pool({ connectionString: process.env.DATABASE_URL });
+const p = new Pool(databasePoolConfig());
 if (process.env.NODE_ENV === "production")
   throw Error("Fictional seed forbidden in production");
 try {

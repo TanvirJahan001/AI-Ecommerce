@@ -1,0 +1,489 @@
+{
+  "target": {
+    "database": "boundary_fixture",
+    "version": "18.6",
+    "address": "127.0.0.1/32",
+    "port": 55434
+  },
+  "schema": "store_private",
+  "declaredExposedSchemas": ["public"],
+  "databaseSideDataApiConfiguration": {
+    "current_setting": null,
+    "stored_settings": []
+  },
+  "apiRolesObserved": ["anon", "authenticated", "service_role"],
+  "objects": [
+    {
+      "name": "account",
+      "kind": "r",
+      "owner": "ecommerce_owner",
+      "rls_enabled": false,
+      "rls_forced": false,
+      "options": null
+    },
+    {
+      "name": "addresses",
+      "kind": "r",
+      "owner": "ecommerce_owner",
+      "rls_enabled": false,
+      "rls_forced": false,
+      "options": null
+    },
+    {
+      "name": "audit_events",
+      "kind": "r",
+      "owner": "ecommerce_owner",
+      "rls_enabled": false,
+      "rls_forced": false,
+      "options": null
+    },
+    {
+      "name": "brands",
+      "kind": "r",
+      "owner": "ecommerce_owner",
+      "rls_enabled": false,
+      "rls_forced": false,
+      "options": null
+    },
+    {
+      "name": "cart_items",
+      "kind": "r",
+      "owner": "ecommerce_owner",
+      "rls_enabled": false,
+      "rls_forced": false,
+      "options": null
+    },
+    {
+      "name": "categories",
+      "kind": "r",
+      "owner": "ecommerce_owner",
+      "rls_enabled": false,
+      "rls_forced": false,
+      "options": null
+    },
+    {
+      "name": "checkout_idempotency",
+      "kind": "r",
+      "owner": "ecommerce_owner",
+      "rls_enabled": false,
+      "rls_forced": false,
+      "options": null
+    },
+    {
+      "name": "cod_collections",
+      "kind": "r",
+      "owner": "ecommerce_owner",
+      "rls_enabled": false,
+      "rls_forced": false,
+      "options": null
+    },
+    {
+      "name": "command_results",
+      "kind": "r",
+      "owner": "ecommerce_owner",
+      "rls_enabled": false,
+      "rls_forced": false,
+      "options": null
+    },
+    {
+      "name": "compatibility",
+      "kind": "r",
+      "owner": "ecommerce_owner",
+      "rls_enabled": false,
+      "rls_forced": false,
+      "options": null
+    },
+    {
+      "name": "courier_remittances",
+      "kind": "r",
+      "owner": "ecommerce_owner",
+      "rls_enabled": false,
+      "rls_forced": false,
+      "options": null
+    },
+    {
+      "name": "customers",
+      "kind": "r",
+      "owner": "ecommerce_owner",
+      "rls_enabled": false,
+      "rls_forced": false,
+      "options": null
+    },
+    {
+      "name": "device_models",
+      "kind": "r",
+      "owner": "ecommerce_owner",
+      "rls_enabled": false,
+      "rls_forced": false,
+      "options": null
+    },
+    {
+      "name": "discount_redemptions",
+      "kind": "r",
+      "owner": "ecommerce_owner",
+      "rls_enabled": false,
+      "rls_forced": false,
+      "options": null
+    },
+    {
+      "name": "discounts",
+      "kind": "r",
+      "owner": "ecommerce_owner",
+      "rls_enabled": false,
+      "rls_forced": false,
+      "options": null
+    },
+    {
+      "name": "funding_events",
+      "kind": "r",
+      "owner": "ecommerce_owner",
+      "rls_enabled": false,
+      "rls_forced": false,
+      "options": null
+    },
+    {
+      "name": "guest_order_grants",
+      "kind": "r",
+      "owner": "ecommerce_owner",
+      "rls_enabled": false,
+      "rls_forced": false,
+      "options": null
+    },
+    {
+      "name": "guest_recovery_challenges",
+      "kind": "r",
+      "owner": "ecommerce_owner",
+      "rls_enabled": false,
+      "rls_forced": false,
+      "options": null
+    },
+    {
+      "name": "http_checkout_results",
+      "kind": "r",
+      "owner": "ecommerce_owner",
+      "rls_enabled": false,
+      "rls_forced": false,
+      "options": null
+    },
+    {
+      "name": "inventory_commitments",
+      "kind": "r",
+      "owner": "ecommerce_owner",
+      "rls_enabled": false,
+      "rls_forced": false,
+      "options": null
+    },
+    {
+      "name": "inventory_movements",
+      "kind": "r",
+      "owner": "ecommerce_owner",
+      "rls_enabled": false,
+      "rls_forced": false,
+      "options": null
+    },
+    {
+      "name": "local_deliveries",
+      "kind": "r",
+      "owner": "ecommerce_owner",
+      "rls_enabled": false,
+      "rls_forced": false,
+      "options": null
+    },
+    {
+      "name": "notification_templates",
+      "kind": "r",
+      "owner": "ecommerce_owner",
+      "rls_enabled": false,
+      "rls_forced": false,
+      "options": null
+    },
+    {
+      "name": "order_item_unit_allocations",
+      "kind": "r",
+      "owner": "ecommerce_owner",
+      "rls_enabled": false,
+      "rls_forced": false,
+      "options": null
+    },
+    {
+      "name": "order_items",
+      "kind": "r",
+      "owner": "ecommerce_owner",
+      "rls_enabled": false,
+      "rls_forced": false,
+      "options": null
+    },
+    {
+      "name": "order_support_notes",
+      "kind": "r",
+      "owner": "ecommerce_owner",
+      "rls_enabled": false,
+      "rls_forced": false,
+      "options": null
+    },
+    {
+      "name": "orders",
+      "kind": "r",
+      "owner": "ecommerce_owner",
+      "rls_enabled": false,
+      "rls_forced": false,
+      "options": null
+    },
+    {
+      "name": "outbox",
+      "kind": "r",
+      "owner": "ecommerce_owner",
+      "rls_enabled": false,
+      "rls_forced": false,
+      "options": null
+    },
+    {
+      "name": "payment_attempts",
+      "kind": "r",
+      "owner": "ecommerce_owner",
+      "rls_enabled": false,
+      "rls_forced": false,
+      "options": null
+    },
+    {
+      "name": "product_media",
+      "kind": "r",
+      "owner": "ecommerce_owner",
+      "rls_enabled": false,
+      "rls_forced": false,
+      "options": null
+    },
+    {
+      "name": "products",
+      "kind": "r",
+      "owner": "ecommerce_owner",
+      "rls_enabled": false,
+      "rls_forced": false,
+      "options": null
+    },
+    {
+      "name": "provider_events",
+      "kind": "r",
+      "owner": "ecommerce_owner",
+      "rls_enabled": false,
+      "rls_forced": false,
+      "options": null
+    },
+    {
+      "name": "rateLimit",
+      "kind": "r",
+      "owner": "ecommerce_owner",
+      "rls_enabled": false,
+      "rls_forced": false,
+      "options": null
+    },
+    {
+      "name": "refund_items",
+      "kind": "r",
+      "owner": "ecommerce_owner",
+      "rls_enabled": false,
+      "rls_forced": false,
+      "options": null
+    },
+    {
+      "name": "refund_payout_attempts",
+      "kind": "r",
+      "owner": "ecommerce_owner",
+      "rls_enabled": false,
+      "rls_forced": false,
+      "options": null
+    },
+    {
+      "name": "refund_unit_allocations",
+      "kind": "r",
+      "owner": "ecommerce_owner",
+      "rls_enabled": false,
+      "rls_forced": false,
+      "options": null
+    },
+    {
+      "name": "refunds",
+      "kind": "r",
+      "owner": "ecommerce_owner",
+      "rls_enabled": false,
+      "rls_forced": false,
+      "options": null
+    },
+    {
+      "name": "remittance_allocations",
+      "kind": "r",
+      "owner": "ecommerce_owner",
+      "rls_enabled": false,
+      "rls_forced": false,
+      "options": null
+    },
+    {
+      "name": "return_items",
+      "kind": "r",
+      "owner": "ecommerce_owner",
+      "rls_enabled": false,
+      "rls_forced": false,
+      "options": null
+    },
+    {
+      "name": "returns",
+      "kind": "r",
+      "owner": "ecommerce_owner",
+      "rls_enabled": false,
+      "rls_forced": false,
+      "options": null
+    },
+    {
+      "name": "schema_migrations",
+      "kind": "r",
+      "owner": "ecommerce_owner",
+      "rls_enabled": false,
+      "rls_forced": false,
+      "options": null
+    },
+    {
+      "name": "session",
+      "kind": "r",
+      "owner": "ecommerce_owner",
+      "rls_enabled": false,
+      "rls_forced": false,
+      "options": null
+    },
+    {
+      "name": "shipments",
+      "kind": "r",
+      "owner": "ecommerce_owner",
+      "rls_enabled": false,
+      "rls_forced": false,
+      "options": null
+    },
+    {
+      "name": "shipping_rates",
+      "kind": "r",
+      "owner": "ecommerce_owner",
+      "rls_enabled": false,
+      "rls_forced": false,
+      "options": null
+    },
+    {
+      "name": "shopping_sessions",
+      "kind": "r",
+      "owner": "ecommerce_owner",
+      "rls_enabled": false,
+      "rls_forced": false,
+      "options": null
+    },
+    {
+      "name": "specifications",
+      "kind": "r",
+      "owner": "ecommerce_owner",
+      "rls_enabled": false,
+      "rls_forced": false,
+      "options": null
+    },
+    {
+      "name": "stock_locations",
+      "kind": "r",
+      "owner": "ecommerce_owner",
+      "rls_enabled": false,
+      "rls_forced": false,
+      "options": null
+    },
+    {
+      "name": "store_access",
+      "kind": "r",
+      "owner": "ecommerce_owner",
+      "rls_enabled": false,
+      "rls_forced": false,
+      "options": null
+    },
+    {
+      "name": "store_content",
+      "kind": "r",
+      "owner": "ecommerce_owner",
+      "rls_enabled": false,
+      "rls_forced": false,
+      "options": null
+    },
+    {
+      "name": "store_settings",
+      "kind": "r",
+      "owner": "ecommerce_owner",
+      "rls_enabled": false,
+      "rls_forced": false,
+      "options": null
+    },
+    {
+      "name": "support_requests",
+      "kind": "r",
+      "owner": "ecommerce_owner",
+      "rls_enabled": false,
+      "rls_forced": false,
+      "options": null
+    },
+    {
+      "name": "twoFactor",
+      "kind": "r",
+      "owner": "ecommerce_owner",
+      "rls_enabled": false,
+      "rls_forced": false,
+      "options": null
+    },
+    {
+      "name": "user",
+      "kind": "r",
+      "owner": "ecommerce_owner",
+      "rls_enabled": false,
+      "rls_forced": false,
+      "options": null
+    },
+    {
+      "name": "variants",
+      "kind": "r",
+      "owner": "ecommerce_owner",
+      "rls_enabled": false,
+      "rls_forced": false,
+      "options": null
+    },
+    {
+      "name": "verification",
+      "kind": "r",
+      "owner": "ecommerce_owner",
+      "rls_enabled": false,
+      "rls_forced": false,
+      "options": null
+    },
+    {
+      "name": "warranty_claims",
+      "kind": "r",
+      "owner": "ecommerce_owner",
+      "rls_enabled": false,
+      "rls_forced": false,
+      "options": null
+    }
+  ],
+  "functions": [],
+  "defaultPrivileges": [
+    {
+      "creator": "ecommerce_owner",
+      "schema": "(global)",
+      "object_type": "f",
+      "acl": "{ecommerce_owner=X/ecommerce_owner}"
+    },
+    {
+      "creator": "ecommerce_owner",
+      "schema": "store_private",
+      "object_type": "r",
+      "acl": "{ecommerce_runtime=arwd/ecommerce_owner}"
+    },
+    {
+      "creator": "ecommerce_owner",
+      "schema": "store_private",
+      "object_type": "S",
+      "acl": "{ecommerce_runtime=rU/ecommerce_owner}"
+    }
+  ],
+  "dataApiHttpVerification": "required separately: environment/file configuration can override database settings",
+  "result": "passed catalog privilege audit",
+  "failures": []
+}

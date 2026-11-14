@@ -1,3 +1,4 @@
+const origin = process.env.APP_ORIGIN || "http://localhost:3000";
 import { test, expect } from "@playwright/test";
 test.use({
   storageState:
@@ -197,7 +198,7 @@ test("owner edits catalog and stock using structured controls, exact BDT and ord
     viewport: { width: 390, height: 844 },
   });
   const shopper = await guest.newPage();
-  await shopper.goto(`http://localhost:3000/products/${slug}`);
+  await shopper.goto(`${origin}/products/${slug}`);
   await expect(
     shopper.getByText("BDT 1,850.50", { exact: true }),
   ).toBeVisible();
@@ -240,7 +241,7 @@ test("renaming a selected SKU retains its identity, specifications and stock", a
     sku = `RENAME-${suffix}`,
     renamed = `RENAMED-${suffix}`,
     slug = `rename-fixture-${suffix}`;
-  const headers = { Origin: "http://localhost:3000" };
+  const headers = { Origin: origin };
   const created = await page.request.post("/api/store", {
     headers,
     data: {

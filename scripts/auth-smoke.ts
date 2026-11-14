@@ -1,3 +1,8 @@
+// Explicit opt-in: these tools mutate fictional fixtures, never a preserved store.
+if (process.env.STORE_TEST_FIXTURES !== "true")
+  throw Error(
+    "Set STORE_TEST_FIXTURES=true only for a disposable fictional application database.",
+  );
 /** Development fixture verification only. No real credentials are accepted or logged. */
 import assert from "node:assert/strict";
 import { readFile, chmod, access } from "node:fs/promises";
@@ -16,7 +21,11 @@ async function main() {
     throw new Error("Development fixtures only");
   const origin = process.env.APP_ORIGIN || "http://localhost:3000";
   const owner = JSON.parse(
-    await readFile("/tmp/store-owner-credentials.json", "utf8"),
+    await readFile(
+      process.env.STORE_OWNER_CREDENTIALS ||
+        "/tmp/store-owner-credentials.json",
+      "utf8",
+    ),
   );
   assert.ok(
     String(owner.email).endsWith("@example.test"),
@@ -24,8 +33,11 @@ async function main() {
   );
   let previousState: string | undefined;
   try {
-    await access("/tmp/store-owner-state.json");
-    previousState = "/tmp/store-owner-state.json";
+    await access(
+      process.env.STORE_OWNER_STORAGE || "/tmp/store-owner-state.json",
+    );
+    previousState =
+      process.env.STORE_OWNER_STORAGE || "/tmp/store-owner-state.json";
   } catch {}
   const browser = await request.newContext({
     baseURL: origin,
@@ -128,8 +140,13 @@ async function main() {
       (await browser.get("/api/store?resource=admin")).status(),
       200,
     );
-    await browser.storageState({ path: "/tmp/store-owner-state.json" });
-    await chmod("/tmp/store-owner-state.json", 0o600);
+    await browser.storageState({
+      path: process.env.STORE_OWNER_STORAGE || "/tmp/store-owner-state.json",
+    });
+    await chmod(
+      process.env.STORE_OWNER_STORAGE || "/tmp/store-owner-state.json",
+      0o600,
+    );
     console.log(
       "PASS: anonymous denied, customer signup and role denial, owner MFA gate/enrollment/challenge, deactivation/session revocation; owner storage state saved privately",
     );
