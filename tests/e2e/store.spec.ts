@@ -97,7 +97,9 @@ test("mobile shopper selects exact case, checks out, and tracks verified develop
   await page.getByRole("button", { name: "Link order securely" }).click();
   await expect(page.getByRole("status")).toContainText("Order linked");
   await expect(
-    page.getByRole("link", { name: orderId.slice(0, 8) }),
+    page.getByRole("link", {
+      name: `Order ${orderId.slice(0, 8).toUpperCase()}`,
+    }),
   ).toBeVisible();
   await page.screenshot({
     path: "artifacts/customer-order-history.png",
@@ -115,7 +117,7 @@ test("charger specifications remain structured and owner console denies anonymou
   ).toBeVisible();
   await expect(page.getByText("USB-C", { exact: true })).toBeVisible();
   await expect(
-    page.getByText('["USB Power Delivery"]', { exact: true }),
+    page.getByText("USB Power Delivery", { exact: true }),
   ).toBeVisible();
   await page.screenshot({
     path: "artifacts/desktop-charger.png",
@@ -123,7 +125,7 @@ test("charger specifications remain structured and owner console denies anonymou
   });
   await page.goto("/admin");
   await expect(
-    page.getByRole("heading", { name: "Owner access required" }),
+    page.getByRole("heading", { name: "Sign in to continue" }),
   ).toBeVisible();
   await page.screenshot({
     path: "artifacts/admin-access-denied.png",

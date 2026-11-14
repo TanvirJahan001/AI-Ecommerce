@@ -21,6 +21,7 @@ import {
   settlement,
   retryPayment,
   stockReceipt,
+  getRefundEligibility,
 } from "../../src/modules/commerce/service";
 const url = process.env.TEST_DATABASE_URL;
 const schema = `test_${randomUUID().replaceAll("-", "")}`;
@@ -709,5 +710,367 @@ describe.skipIf(!url)("PostgreSQL commerce invariants", () => {
     ).rows[0];
     expect(item.specification_snapshot.max_output_w).toBe(30);
     expect(item.variant_label_snapshot).toBe("Clear");
+  });
+  it("refunds a paid unshipped cancellation without a fictional return or physical receipt", async () => {
+    const order = await create();
+    await paid(order.id);
+    const beforeCancellation = await transaction(pool, (c) =>
+      getRefundEligibility(c, order.id, actor),
+    );
+    expect(beforeCancellation.branch).toBe("unshipped_cancellation");
+    expect(beforeCancellation.requires_cancellation).toBe(true);
+    expect(beforeCancellation.reason).toContain("Approve cancellation");
+    expect(beforeCancellation.reason).not.toContain("receipt");
+    expect(beforeCancellation.items[0].remaining_quantity).toBe(0);
+    const snapshot = (
+      await pool.query(
+        "select unit_minor,discount_minor,quantity from order_items where order_id=$1",
+        [order.id],
+      )
+    ).rows;
+    await Promise.all([
+      transaction(pool, (c) => cancelOrder(c, order.id, actor, randomUUID())),
+      transaction(pool, (c) => cancelOrder(c, order.id, actor, randomUUID())),
+    ]);
+    const eligibility = await transaction(pool, (c) =>
+      getRefundEligibility(c, order.id, actor),
+    );
+    await expect(
+      transaction(pool, (c) =>
+        getRefundEligibility(c, order.id, {
+          id: "unrelated-customer",
+          role: "customer",
+        }),
+      ),
+    ).rejects.toThrow("Owner permission required");
+    expect(eligibility.branch).toBe("unshipped_cancellation");
+    expect(eligibility.requires_cancellation).toBe(false);
+    expect(eligibility.items[0].remaining_quantity).toBe(1);
+    expect(eligibility.remaining_total_minor).toBe(11000);
+    const request = {
+      order_id: order.id,
+      funding_event_id: eligibility.funding[0].id,
+      items: [
+        { order_item_id: eligibility.items[0].order_item_id, quantity: 1 },
+      ],
+      shipping_minor: 1000,
+      reason: "Approved unshipped cancellation",
+      key: randomUUID(),
+    };
+    const refund = await transaction(pool, (c) =>
+      reserveRefund(c, request, actor),
+    );
+    expect(
+      (await transaction(pool, (c) => reserveRefund(c, request, actor))).id,
+    ).toBe(refund.id);
+    const submissionKey = randomUUID();
+    await Promise.all([
+      transaction(pool, (c) =>
+        submitRefund(c, refund.id, actor, submissionKey),
+      ),
+      transaction(pool, (c) =>
+        submitRefund(c, refund.id, actor, submissionKey),
+      ),
+    ]);
+    await transaction(pool, (c) =>
+      reconcileRefund(
+        c,
+        refund.id,
+        "unknown",
+        "Fictional provider timeout",
+        actor,
+        randomUUID(),
+      ),
+    );
+    expect(
+      (await transaction(pool, (c) => getRefundEligibility(c, order.id, actor)))
+        .remaining_total_minor,
+    ).toBe(0);
+    await expect(
+      transaction(pool, (c) =>
+        reserveRefund(c, { ...request, key: randomUUID() }, actor),
+      ),
+    ).rejects.toThrow();
+    await transaction(pool, (c) =>
+      reconcileRefund(
+        c,
+        refund.id,
+        "succeeded",
+        "Fictional verified payout evidence",
+        actor,
+        randomUUID(),
+      ),
+    );
+    expect(
+      (
+        await pool.query(
+          "select count(*)::int n from refund_payout_attempts where refund_id=$1",
+          [refund.id],
+        )
+      ).rows[0].n,
+    ).toBe(1);
+    expect(
+      (
+        await pool.query(
+          "select sellable_qty,committed_qty,quarantined_qty from variants where id=$1",
+          [variant],
+        )
+      ).rows[0],
+    ).toEqual({ sellable_qty: 1, committed_qty: 0, quarantined_qty: 0 });
+    expect(
+      (
+        await pool.query(
+          "select count(*)::int n from returns where order_id=$1",
+          [order.id],
+        )
+      ).rows[0].n,
+    ).toBe(0);
+    expect(
+      (
+        await pool.query(
+          "select count(*)::int n from inventory_movements where variant_id=$1",
+          [variant],
+        )
+      ).rows[0].n,
+    ).toBe(0);
+    expect(
+      (
+        await pool.query(
+          "select unit_minor,discount_minor,quantity from order_items where order_id=$1",
+          [order.id],
+        )
+      ).rows,
+    ).toEqual(snapshot);
+  });
+  it("refunds verified late funds after cancellation without resuming fulfillment", async () => {
+    const order = await create();
+    await transaction(pool, (c) =>
+      cancelOrder(c, order.id, actor, randomUUID()),
+    );
+    expect((await paid(order.id)).status).toBe("reconciliation_required");
+    const eligibility = await transaction(pool, (c) =>
+      getRefundEligibility(c, order.id, actor),
+    );
+    const attempt = (
+      await pool.query(
+        "select id,provider_ref from payment_attempts where order_id=$1",
+        [order.id],
+      )
+    ).rows[0];
+    const delayed = await transaction(pool, (c) =>
+      paymentEvent(c, {
+        event_id: randomUUID(),
+        attempt_id: attempt.id,
+        status: "failed",
+        amount_minor: 11000,
+        currency: "BDT",
+        reference: attempt.provider_ref,
+        provider: "development",
+      }),
+    );
+    expect(delayed.status).toBe("reconciliation_required");
+    await expect(
+      transaction(pool, (c) =>
+        paymentEvent(c, {
+          event_id: randomUUID(),
+          attempt_id: attempt.id,
+          status: "succeeded",
+          amount_minor: 11000,
+          currency: "BDT",
+          reference: randomUUID(),
+          provider: "development",
+        }),
+      ),
+    ).rejects.toThrow("different provider reference");
+    expect(
+      (
+        await pool.query(
+          "select sum(amount_minor)::int amount from funding_events where order_id=$1",
+          [order.id],
+        )
+      ).rows[0].amount,
+    ).toBe(11000);
+    expect(eligibility.branch).toBe("late_payment");
+    expect(eligibility.requires_cancellation).toBe(false);
+    const refund = await transaction(pool, (c) =>
+      reserveRefund(
+        c,
+        {
+          order_id: order.id,
+          funding_event_id: eligibility.funding[0].id,
+          items: [
+            { order_item_id: eligibility.items[0].order_item_id, quantity: 1 },
+          ],
+          shipping_minor: 1000,
+          reason: "Late paid funds returned",
+          key: randomUUID(),
+        },
+        actor,
+      ),
+    );
+    await transaction(pool, (c) =>
+      submitRefund(c, refund.id, actor, randomUUID()),
+    );
+    await transaction(pool, (c) =>
+      reconcileRefund(
+        c,
+        refund.id,
+        "succeeded",
+        "Fictional late-payment payout",
+        actor,
+        randomUUID(),
+      ),
+    );
+    expect(
+      (await pool.query("select status from orders where id=$1", [order.id]))
+        .rows[0].status,
+    ).toBe("cancelled");
+    expect(
+      (
+        await pool.query(
+          "select count(*)::int n from shipments where order_id=$1",
+          [order.id],
+        )
+      ).rows[0].n,
+    ).toBe(0);
+    expect(
+      (
+        await pool.query(
+          "select count(*)::int n from returns where order_id=$1",
+          [order.id],
+        )
+      ).rows[0].n,
+    ).toBe(0);
+  });
+  it("requires an explicit cancellation resolution before refunding a reservation-expiry late payment", async () => {
+    const order = await create();
+    await pool.query(
+      "update inventory_commitments set expires_at=now()-interval '1 minute' where order_id=$1",
+      [order.id],
+    );
+    expect((await paid(order.id)).status).toBe("reconciliation_required");
+    const eligibility = await transaction(pool, (c) =>
+      getRefundEligibility(c, order.id, actor),
+    );
+    expect(eligibility.branch).toBe("late_payment");
+    expect(eligibility.requires_cancellation).toBe(true);
+    const request = {
+      order_id: order.id,
+      funding_event_id: eligibility.funding[0].id,
+      items: [
+        { order_item_id: eligibility.items[0].order_item_id, quantity: 1 },
+      ],
+      shipping_minor: 1000,
+      reason: "Refund late payment after expired hold",
+      key: randomUUID(),
+    };
+    await expect(
+      transaction(pool, (c) => reserveRefund(c, request, actor)),
+    ).rejects.toThrow("Approve cancellation");
+    expect(
+      (await pool.query("select status from orders where id=$1", [order.id]))
+        .rows[0].status,
+    ).toBe("pending_payment");
+    await transaction(pool, (c) =>
+      cancelOrder(c, order.id, actor, randomUUID()),
+    );
+    const refund = await transaction(pool, (c) =>
+      reserveRefund(c, request, actor),
+    );
+    expect(refund.amount_minor).toBe(11000);
+    expect(
+      (
+        await pool.query(
+          "select sellable_qty,committed_qty from variants where id=$1",
+          [variant],
+        )
+      ).rows[0],
+    ).toEqual({ sellable_qty: 1, committed_qty: 0 });
+    expect(
+      (
+        await pool.query(
+          "select count(*)::int n from inventory_movements where variant_id=$1",
+          [variant],
+        )
+      ).rows[0].n,
+    ).toBe(0);
+  });
+  it("requires delivered returns to be received and inspected while refund payout leaves disposition unchanged", async () => {
+    const order = await create();
+    await paid(order.id);
+    await transaction(pool, (c) =>
+      dispatchOrder(c, order.id, "Fictional delivery", actor, randomUUID()),
+    );
+    await transaction(pool, (c) =>
+      updateShipment(c, order.id, "delivered", actor, randomUUID()),
+    );
+    const eligible = await transaction(pool, (c) =>
+      getRefundEligibility(c, order.id, actor),
+    );
+    expect(eligible.branch).toBe("delivered_return");
+    expect(eligible.items[0].remaining_quantity).toBe(0);
+    const itemId = eligible.items[0].order_item_id;
+    const request = {
+      order_id: order.id,
+      funding_event_id: eligible.funding[0].id,
+      items: [{ order_item_id: itemId, quantity: 1 }],
+      shipping_minor: 0,
+      reason: "Inspected delivered return",
+      key: randomUUID(),
+    };
+    await expect(
+      transaction(pool, (c) => reserveRefund(c, request, actor)),
+    ).rejects.toThrow("Quantity exceeds");
+    const ret = await transaction(pool, (c) =>
+      requestReturn(
+        c,
+        order.id,
+        [{ order_item_id: itemId, quantity: 1 }],
+        "Fictional defect",
+        actor,
+        randomUUID(),
+      ),
+    );
+    await transaction(pool, (c) =>
+      authorizeReturn(c, ret.id, true, actor, randomUUID()),
+    );
+    await transaction(pool, (c) =>
+      receiveReturn(c, ret.id, actor, randomUUID()),
+    );
+    await expect(
+      transaction(pool, (c) => reserveRefund(c, request, actor)),
+    ).rejects.toThrow("Quantity exceeds");
+    const ri = (
+      await pool.query("select id from return_items where return_id=$1", [
+        ret.id,
+      ])
+    ).rows[0];
+    await transaction(pool, (c) =>
+      inspectReturn(c, ri.id, "damaged", actor, randomUUID()),
+    );
+    const refund = await transaction(pool, (c) =>
+      reserveRefund(c, request, actor),
+    );
+    await transaction(pool, (c) =>
+      submitRefund(c, refund.id, actor, randomUUID()),
+    );
+    await transaction(pool, (c) =>
+      reconcileRefund(
+        c,
+        refund.id,
+        "succeeded",
+        "Fictional delivered-return payout",
+        actor,
+        randomUUID(),
+      ),
+    );
+    expect(
+      (
+        await pool.query(
+          "select sellable_qty,committed_qty,quarantined_qty from variants where id=$1",
+          [variant],
+        )
+      ).rows[0],
+    ).toEqual({ sellable_qty: 0, committed_qty: 0, quarantined_qty: 1 });
   });
 });

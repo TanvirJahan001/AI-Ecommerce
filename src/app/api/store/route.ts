@@ -136,6 +136,55 @@ export async function GET(req: NextRequest) {
           await db.query(`select * from ${table} where order_id=$1`, [id])
         ).rows;
       data = detail;
+    } else if (resource === "admin.order") {
+      const identity = await requireOwner(req.headers);
+      const id = z.string().uuid().parse(req.nextUrl.searchParams.get("id"));
+      data = await commerce.transaction(db, async (c) => {
+        const order = (
+          await c.query("select * from orders where id=$1 for update", [id])
+        ).rows[0];
+        if (!order)
+          throw new AccessError(404, "ORDER_NOT_FOUND", "Order not found");
+        const detail: Record<string, unknown> = { order };
+        for (const [key, table] of Object.entries({
+          items: "order_items",
+          payments: "payment_attempts",
+          shipments: "shipments",
+          returns: "returns",
+          refunds: "refunds",
+          funding_events: "funding_events",
+          support_notes: "order_support_notes",
+        }))
+          detail[key] = (
+            await c.query(
+              `select * from ${table} where order_id=$1 order by ${table === "order_items" ? "id" : "created_at"}`,
+              [id],
+            )
+          ).rows;
+        detail.return_items = (
+          await c.query(
+            "select ri.* from return_items ri join returns r on r.id=ri.return_id where r.order_id=$1",
+            [id],
+          )
+        ).rows;
+        detail.refund_items = (
+          await c.query(
+            "select ri.* from refund_items ri join refunds r on r.id=ri.refund_id where r.order_id=$1",
+            [id],
+          )
+        ).rows;
+        detail.warranty_claims = (
+          await c.query(
+            "select w.* from warranty_claims w join order_items oi on oi.id=w.order_item_id where oi.order_id=$1",
+            [id],
+          )
+        ).rows;
+        detail.refund_eligibility = await commerce.getRefundEligibility(c, id, {
+          id: identity.user.id,
+          role: "owner",
+        });
+        return detail;
+      });
     } else if (resource === "reports") {
       await requireOwner(req.headers);
       data = {
@@ -188,6 +237,10 @@ export async function GET(req: NextRequest) {
         products: await catalog(db, { includeDrafts: true }),
       };
       for (const [key, query] of Object.entries({
+        shipments: "select * from shipments",
+        remittance_allocations: "select * from remittance_allocations",
+        inventory_movements:
+          "select * from inventory_movements order by created_at desc limit 500",
         inventory:
           "select v.*,p.name from variants v join products p on p.id=v.product_id",
         orders: "select * from orders order by created_at desc limit 100",
@@ -226,8 +279,15 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     requireSameOrigin(req);
-    const s = await session(req);
     const body = await req.json();
+    if (body.action === "session.restart") {
+      const token = randomBytes(32).toString("base64url");
+      await db.query("insert into shopping_sessions(id) values($1)", [
+        digest(token),
+      ]);
+      return answer({ restarted: true }, token);
+    }
+    const s = await session(req);
     const action = z.string().parse(body.action);
     let data: unknown;
     if (action === "cart.add") {
@@ -494,8 +554,19 @@ export async function POST(req: NextRequest) {
         );
       data = await commerce.transaction(db, async (c) => {
         await c.query(
-          "insert into audit_events(actor_id,action,entity_type,reason) values($1,'admin.command','store',$2)",
-          [actor.id, String(body.command)],
+          "insert into audit_events(actor_id,action,entity_type,reason,metadata) values($1,'admin.command','store',$2,$3)",
+          [
+            actor.id,
+            String(body.reason ?? body.command).slice(0, 1000),
+            JSON.stringify({
+              command: body.command,
+              order_id: body.order_id,
+              evidence:
+                typeof body.evidence === "string"
+                  ? body.evidence.slice(0, 1000)
+                  : undefined,
+            }),
+          ],
         );
         switch (body.command) {
           case "cod.confirm":
@@ -503,7 +574,7 @@ export async function POST(req: NextRequest) {
           case "cancel.reject":
             return commerce.rejectCancellation(c, id, body.reason, actor, key);
           case "cancel":
-            return commerce.cancelOrder(c, id, actor, key);
+            return commerce.cancelOrder(c, id, actor, key, body.reason);
           case "dispatch":
             return commerce.dispatchOrder(
               c,
@@ -544,6 +615,14 @@ export async function POST(req: NextRequest) {
             );
           case "return.receive":
             return commerce.receiveReturn(c, body.return_id, actor, key);
+          case "return.dispose":
+            return commerce.disposeReturnItem(
+              c,
+              body.return_item_id,
+              body.reason,
+              actor,
+              key,
+            );
           case "return.inspect":
             return commerce.inspectReturn(
               c,
@@ -690,7 +769,9 @@ export async function POST(req: NextRequest) {
                 source: body.source,
                 models: parse(body.models, []),
                 specifications: parse(body.specifications, {}),
-                media: parse(body.media, []),
+                media:
+                  body.media === undefined ? undefined : parse(body.media, []),
+                remove_specifications: body.remove_specifications,
               },
               actor,
             );
@@ -723,8 +804,13 @@ export async function POST(req: NextRequest) {
               .parse(body);
             if (p.published) {
               const proof = await c.query(
-                "select 1 from variants v where v.sku=$1 and (exists(select 1 from specifications s where s.variant_id=v.id) or exists(select 1 from compatibility co where co.variant_id=v.id))",
-                [p.sku],
+                "select 1 from variants v where (v.sku=$1 or v.id=$2::uuid) and (exists(select 1 from specifications s where s.variant_id=v.id) or exists(select 1 from compatibility co where co.variant_id=v.id))",
+                [
+                  p.sku,
+                  body.variant_id
+                    ? z.string().uuid().parse(body.variant_id)
+                    : null,
+                ],
               );
               if (!proof.rowCount)
                 throw new AccessError(
@@ -747,10 +833,24 @@ export async function POST(req: NextRequest) {
                 );
             const product = productResult.rows[0];
             if (!product) throw new AccessError(404, "PRODUCT_NOT_FOUND");
-            const savedVariant = await c.query(
-              "insert into variants(product_id,sku,label,price_minor) values($1,$2,$3,$4) on conflict(sku) do update set label=excluded.label,price_minor=excluded.price_minor where variants.product_id=excluded.product_id returning id",
-              [product.id, p.sku, p.label, p.price_minor],
-            );
+            const existingVariantId = body.variant_id
+              ? z.string().uuid().parse(body.variant_id)
+              : null;
+            const savedVariant = existingVariantId
+              ? await c.query(
+                  "update variants set sku=$2,label=$3,price_minor=$4 where id=$1 and product_id=$5 returning id",
+                  [
+                    existingVariantId,
+                    p.sku,
+                    p.label,
+                    p.price_minor,
+                    product.id,
+                  ],
+                )
+              : await c.query(
+                  "insert into variants(product_id,sku,label,price_minor) values($1,$2,$3,$4) on conflict(sku) do update set label=excluded.label,price_minor=excluded.price_minor where variants.product_id=excluded.product_id returning id",
+                  [product.id, p.sku, p.label, p.price_minor],
+                );
             if (!savedVariant.rowCount)
               throw new AccessError(
                 409,
@@ -807,6 +907,14 @@ function failure(e: unknown) {
     return NextResponse.json(
       { code: e.code, message: e.message },
       { status: e.status },
+    );
+  if (typeof e === "object" && e && "code" in e && e.code === "23505")
+    return NextResponse.json(
+      {
+        code: "IDENTIFIER_CONFLICT",
+        message: "That SKU or URL is already in use. Choose a unique value.",
+      },
+      { status: 409 },
     );
   if (e instanceof z.ZodError)
     return NextResponse.json(

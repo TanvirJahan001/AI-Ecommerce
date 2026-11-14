@@ -954,3 +954,142 @@ summary {
     height: 300px;
   }
 }
+
+.order-history {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 16px;
+}
+.history-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+}
+.history-card details {
+  grid-column: 1/-1;
+}
+.history-card code {
+  overflow-wrap: anywhere;
+}
+.history-card strong {
+  white-space: nowrap;
+}
+.power-profiles {
+  width: 100%;
+  border-collapse: collapse;
+}
+.power-profiles th,
+.power-profiles td {
+  text-align: left;
+  padding: 8px;
+  border-bottom: 1px solid var(--border);
+}
+.spec-list dd {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.form-stack input,
+.form-stack select,
+.form-stack textarea {
+  max-width: 100%;
+  min-width: 0;
+}
+.card {
+  min-width: 0;
+}
+.card img {
+  max-width: 100%;
+}
+.admin-main {
+  min-width: 0;
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+}
+@media (max-width: 600px) {
+  .history-card {
+    grid-template-columns: 1fr;
+  }
+  .history-card strong {
+    font-size: 1.25rem;
+  }
+  .badge {
+    max-width: 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .command-form {
+    grid-template-columns: 1fr;
+  }
+  .admin-header {
+    align-items: flex-start;
+    gap: 12px;
+  }
+  .admin-header h1 {
+    overflow-wrap: anywhere;
+  }
+  .spec-list > div {
+    grid-template-columns: 1fr;
+  }
+  .spec-list dd {
+    margin: 4px 0 8px;
+  }
+}
+fieldset {
+  min-width: 0;
+  max-width: 100%;
+}
+input,
+textarea,
+select {
+  min-width: 0;
+}
+.field-grid > * {
+  min-width: 0;
+}
+.access-state {
+  max-width: 720px;
+}
+.history-card a {
+  font-weight: 700;
+}
+.spec-list table {
+  min-width: 0;
+}
+.admin-main code {
+  overflow-wrap: anywhere;
+}
+.form-stack {
+  max-width: 900px;
+}
+label {
+  min-width: 0;
+}
+
+.power-profiles {
+  font-size: 14px;
+}
+.power-profiles td {
+  white-space: nowrap;
+}
+@media (max-width: 600px) {
+  .spec-list > .spec-profile-row {
+    display: block;
+    text-align: left;
+  }
+  .spec-profile-row dd {
+    width: 100%;
+    margin: 8px 0;
+  }
+  .spec-profile-row table {
+    width: 100%;
+  }
+}

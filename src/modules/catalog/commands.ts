@@ -71,6 +71,14 @@ export const variantDetailsSchema = z
       )
       .max(100),
     specifications: specificationsSchema,
+    remove_specifications: z
+      .array(
+        z.enum(
+          Object.keys(specificationsSchema.shape) as [string, ...string[]],
+        ),
+      )
+      .max(30)
+      .optional(),
     media: z
       .array(
         z
@@ -94,7 +102,7 @@ export const variantDetailsSchema = z
   .strict();
 export type VariantDetailsInput = z.input<typeof variantDetailsSchema>;
 
-/** Call inside commerce.transaction. Replaces only this SKU's fit/spec/media, never sibling fit. */
+/** Call inside commerce.transaction. Fit/media replace only this SKU; supplied spec fields patch existing values. */
 export async function saveVariantDetails(
   client: PoolClient,
   raw: VariantDetailsInput,
@@ -103,6 +111,16 @@ export async function saveVariantDetails(
   if (actor.role !== "owner")
     throw new CommerceError("FORBIDDEN", "Owner permission required", 403);
   const input = variantDetailsSchema.parse(raw);
+  if (
+    input.remove_specifications?.some((key) =>
+      Object.hasOwn(input.specifications, key),
+    )
+  )
+    throw new CommerceError(
+      "SPECIFICATIONS_CONFLICT",
+      "A specification cannot be set and removed in the same command",
+      400,
+    );
   const keys = input.models.map((model) =>
     JSON.stringify([model.brand, model.model, model.model_number]),
   );
@@ -112,20 +130,6 @@ export async function saveVariantDetails(
       "List each device model once",
       400,
     );
-  if (
-    input.specifications.max_output_w &&
-    input.specifications.power_profiles?.some(
-      (profile) =>
-        profile.volts * profile.amps >
-        input.specifications.max_output_w! + 0.01,
-    )
-  ) {
-    throw new CommerceError(
-      "SPECIFICATIONS_CONFLICT",
-      "A power profile exceeds the declared maximum output",
-      400,
-    );
-  }
   // A connector does not imply protocol or output watts; these remain independently supplied fields.
   const selected = await client.query(
     "SELECT id,product_id FROM variants WHERE id=$1 FOR UPDATE",
@@ -137,6 +141,35 @@ export async function saveVariantDetails(
   await client.query("SELECT id FROM products WHERE id=$1 FOR UPDATE", [
     productId,
   ]);
+  const existingSpecifications = Object.fromEntries(
+    (
+      await client.query(
+        "SELECT attribute,value FROM specifications WHERE variant_id=$1",
+        [input.variant_id],
+      )
+    ).rows.map((row) => [row.attribute, row.value]),
+  );
+  const merged = { ...existingSpecifications, ...input.specifications };
+  for (const key of input.remove_specifications ?? []) delete merged[key];
+  const combined = specificationsSchema.parse(
+    Object.fromEntries(
+      Object.keys(specificationsSchema.shape)
+        .filter((key) => merged[key] !== undefined)
+        .map((key) => [key, merged[key]]),
+    ),
+  );
+  if (
+    combined.max_output_w &&
+    combined.power_profiles?.some(
+      (profile) => profile.volts * profile.amps > combined.max_output_w! + 0.01,
+    )
+  ) {
+    throw new CommerceError(
+      "SPECIFICATIONS_CONFLICT",
+      "A power profile exceeds the declared maximum output",
+      400,
+    );
+  }
   if (input.category) {
     const category = await client.query(
       "INSERT INTO categories(name,slug) VALUES($1,$2) ON CONFLICT(slug) DO UPDATE SET name=excluded.name RETURNING id",
@@ -175,18 +208,21 @@ export async function saveVariantDetails(
       [
         input.variant_id,
         device.rows[0].id,
-        input.specifications.fit_note ?? "",
+        combined.fit_note ?? "",
         input.source,
       ],
     );
   }
-  await client.query("DELETE FROM specifications WHERE variant_id=$1", [
-    input.variant_id,
-  ]);
+  // Patch only explicit fields. Unknown older fields and their evidence remain intact.
+  if (input.remove_specifications?.length)
+    await client.query(
+      "DELETE FROM specifications WHERE variant_id=$1 AND attribute=ANY($2::text[])",
+      [input.variant_id, input.remove_specifications],
+    );
   for (const [attribute, value] of Object.entries(input.specifications)) {
     if (value !== undefined)
       await client.query(
-        "INSERT INTO specifications(variant_id,attribute,value,source,verified_at) VALUES($1,$2,$3::jsonb,$4,now())",
+        "INSERT INTO specifications(variant_id,attribute,value,source,verified_at) VALUES($1,$2,$3::jsonb,$4,now()) ON CONFLICT(variant_id,attribute) DO UPDATE SET value=excluded.value,source=excluded.source,verified_at=excluded.verified_at",
         [input.variant_id, attribute, JSON.stringify(value), input.source],
       );
   }
@@ -194,10 +230,10 @@ export async function saveVariantDetails(
     await client.query("DELETE FROM product_media WHERE variant_id=$1", [
       input.variant_id,
     ]);
-    for (const media of input.media)
+    for (const [index, media] of input.media.entries())
       await client.query(
-        "INSERT INTO product_media(product_id,variant_id,url,alt) VALUES($1,$2,$3,$4)",
-        [productId, input.variant_id, media.url, media.alt],
+        "INSERT INTO product_media(product_id,variant_id,url,alt,sort_order) VALUES($1,$2,$3,$4,$5)",
+        [productId, input.variant_id, media.url, media.alt, index],
       );
   }
   await client.query(

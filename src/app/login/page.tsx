@@ -4,6 +4,14 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
 
+function intendedDestination() {
+  if (typeof window === "undefined") return null;
+  const path = new URLSearchParams(window.location.search).get("next");
+  return path &&
+    (/^\/(account|admin)$/.test(path) || /^\/orders\/[a-f0-9-]{36}$/.test(path))
+    ? path
+    : null;
+}
 type Enrollment = { uri: string; backupCodes: string[] };
 export default function LoginPage() {
   const router = useRouter();
@@ -24,7 +32,11 @@ export default function LoginPage() {
       setSetup(true);
       setChallenge(false);
       setMessage("Enroll an authenticator app before opening administration.");
-    } else router.push(identity.user.role === "owner" ? "/admin" : "/account");
+    } else
+      router.push(
+        intendedDestination() ??
+          (identity.user.role === "owner" ? "/admin" : "/account"),
+      );
   }
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -48,7 +60,7 @@ export default function LoginPage() {
             "Authenticator verified. Save the recovery codes before continuing to administration.",
           );
           setEnrollment(null);
-          router.push("/admin");
+          router.push(intendedDestination() ?? "/admin");
         } else await finish();
       } else if (setup) {
         const result = await authClient.twoFactor.enable({

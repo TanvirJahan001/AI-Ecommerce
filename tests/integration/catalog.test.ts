@@ -19,6 +19,7 @@ describe.skipIf(!url)("owner catalog persistence", () => {
       "001_initial.sql",
       "003_store.sql",
       "007_catalog_media.sql",
+      "013_catalog_refinement.sql",
     ])
       await pool.query(await readFile(`db/migrations/${file}`, "utf8"));
   });
@@ -167,6 +168,19 @@ describe.skipIf(!url)("owner catalog persistence", () => {
       transaction(pool, (c) =>
         saveVariantDetails(
           c,
+          {
+            ...base,
+            specifications: { max_output_w: 30 },
+            remove_specifications: ["max_output_w"],
+          },
+          owner,
+        ),
+      ),
+    ).rejects.toThrow("set and removed");
+    await expect(
+      transaction(pool, (c) =>
+        saveVariantDetails(
+          c,
           { ...base, specifications: { certified: true } as never },
           owner,
         ),
@@ -176,5 +190,98 @@ describe.skipIf(!url)("owner catalog persistence", () => {
       (await pool.query("SELECT id FROM audit_events WHERE actor_id='buyer'"))
         .rowCount,
     ).toBe(0);
+  });
+  it("preserves unedited specifications and sources, supports explicit removals and persists media ordering", async () => {
+    const variant = (
+      await pool.query("SELECT id FROM variants WHERE sku='FIX-Q'")
+    ).rows[0];
+    await pool.query(
+      "INSERT INTO specifications(variant_id,attribute,value,source) VALUES($1,'legacy_approved_fact','{\"label\":\"Original\"}','Historical source')",
+      [variant.id],
+    );
+    const before = (
+      await pool.query(
+        "SELECT value FROM specifications WHERE variant_id=$1 AND attribute='power_profiles'",
+        [variant.id],
+      )
+    ).rows[0].value;
+    await transaction(pool, (c) =>
+      saveVariantDetails(
+        c,
+        {
+          variant_id: variant.id,
+          source: "Fictional revised review",
+          models: [],
+          specifications: { color: "Blue" },
+          media: [
+            { url: "/samples/two.svg", alt: "Second image now cover" },
+            { url: "/samples/one.svg", alt: "Original image now second" },
+          ],
+        },
+        owner,
+      ),
+    );
+    expect(
+      (
+        await pool.query(
+          "SELECT value,source FROM specifications WHERE variant_id=$1 AND attribute='legacy_approved_fact'",
+          [variant.id],
+        )
+      ).rows[0],
+    ).toEqual({ value: { label: "Original" }, source: "Historical source" });
+    expect(
+      (
+        await pool.query(
+          "SELECT value FROM specifications WHERE variant_id=$1 AND attribute='power_profiles'",
+          [variant.id],
+        )
+      ).rows[0].value,
+    ).toEqual(before);
+    expect(
+      (
+        await pool.query(
+          "SELECT url,sort_order FROM product_media WHERE variant_id=$1 ORDER BY sort_order",
+          [variant.id],
+        )
+      ).rows,
+    ).toEqual([
+      { url: "/samples/two.svg", sort_order: 0 },
+      { url: "/samples/one.svg", sort_order: 1 },
+    ]);
+    await transaction(pool, (c) =>
+      saveVariantDetails(
+        c,
+        {
+          variant_id: variant.id,
+          source: "Fictional removal review",
+          models: [],
+          specifications: {},
+          remove_specifications: ["color"],
+        },
+        owner,
+      ),
+    );
+    expect(
+      (
+        await pool.query(
+          "SELECT value FROM specifications WHERE variant_id=$1 AND attribute='color'",
+          [variant.id],
+        )
+      ).rowCount,
+    ).toBe(0);
+    await expect(
+      transaction(pool, (c) =>
+        saveVariantDetails(
+          c,
+          {
+            variant_id: variant.id,
+            source: "Fictional contradiction check",
+            models: [],
+            specifications: { max_output_w: 10 },
+          },
+          owner,
+        ),
+      ),
+    ).rejects.toThrow("exceeds");
   });
 });

@@ -399,7 +399,17 @@ export async function paymentEvent(
         [input.provider, input.event_id, hash(input)],
       );
       if (p.status === "succeeded") return { status: "succeeded" };
+      if (
+        p.status === "reconciliation_required" &&
+        input.status !== "succeeded"
+      )
+        return { status: "reconciliation_required" };
       if (input.status === "succeeded") {
+        need(
+          !p.provider_ref || p.provider_ref === input.reference,
+          "PAYMENT_REFERENCE_MISMATCH",
+          "Verified payment attempt already has a different provider reference",
+        );
         const active = await c.query(
           "SELECT * FROM inventory_commitments WHERE order_id=$1 AND status='active' AND (expires_at IS NULL OR expires_at>now())",
           [o.id],
@@ -486,26 +496,44 @@ export async function cancelOrder(
   id: string,
   a: Actor,
   key: string,
+  reason?: string,
 ) {
   owner(a);
-  return command(c, key, "order.cancel", { id, a: a.id }, async () => {
-    const o = await lockedOrder(c, id);
-    const ship = await c.query(
-      "SELECT id FROM shipments WHERE order_id=$1 AND status IN ('dispatched','delivered','delivery_failed','retry_scheduled','return_to_origin','returned_to_store')",
-      [id],
-    );
-    need(
-      !ship.rowCount,
-      "ALREADY_DISPATCHED",
-      "Dispatched order cannot be cancelled",
-    );
-    if (o.status === "cancelled") return { status: "cancelled" };
-    await release(c, id);
-    await c.query("UPDATE orders SET status='cancelled' WHERE id=$1", [id]);
-    await audit(c, a, "order.cancel", id, "Cancellation approved");
-    await notify(c, id, "order.cancelled", `cancelled:${id}`);
-    return { status: "cancelled" };
-  });
+  return command(
+    c,
+    key,
+    "order.cancel",
+    { id, a: a.id, ...(reason !== undefined ? { reason } : {}) },
+    async () => {
+      need(
+        reason === undefined || reason.trim().length >= 3,
+        "REASON_REQUIRED",
+        "Cancellation reason required",
+      );
+      const o = await lockedOrder(c, id);
+      const ship = await c.query(
+        "SELECT id FROM shipments WHERE order_id=$1 AND status IN ('dispatched','delivered','delivery_failed','retry_scheduled','return_to_origin','returned_to_store')",
+        [id],
+      );
+      need(
+        !ship.rowCount,
+        "ALREADY_DISPATCHED",
+        "Dispatched order cannot be cancelled",
+      );
+      if (o.status === "cancelled") return { status: "cancelled" };
+      await release(c, id);
+      await c.query("UPDATE orders SET status='cancelled' WHERE id=$1", [id]);
+      await audit(
+        c,
+        a,
+        "order.cancel",
+        id,
+        reason?.trim() || "Cancellation approved",
+      );
+      await notify(c, id, "order.cancelled", `cancelled:${id}`);
+      return { status: "cancelled" };
+    },
+  );
 }
 export async function dispatchOrder(
   c: PoolClient,
@@ -667,6 +695,124 @@ export async function collectCod(
     },
   );
 }
+export type RefundBranch =
+  "unshipped_cancellation" | "late_payment" | "delivered_return";
+async function refundBranch(
+  c: PoolClient,
+  order: { id: string; status: string },
+) {
+  const dispatched = await c.query(
+    "SELECT 1 FROM inventory_commitments WHERE order_id=$1 AND status='dispatched' UNION ALL SELECT 1 FROM shipments WHERE order_id=$1 AND status IN ('dispatched','delivered','delivery_failed','retry_scheduled','return_to_origin','returned_to_store') LIMIT 1",
+    [order.id],
+  );
+  const late = await c.query(
+    "SELECT 1 FROM payment_attempts WHERE order_id=$1 AND status='reconciliation_required' LIMIT 1",
+    [order.id],
+  );
+  const unshipped = !dispatched.rowCount;
+  const branch: RefundBranch =
+    unshipped && late.rowCount
+      ? "late_payment"
+      : unshipped
+        ? "unshipped_cancellation"
+        : "delivered_return";
+  return {
+    branch,
+    unshipped,
+    requires_cancellation: unshipped && order.status !== "cancelled",
+    cancellation_refund: unshipped && order.status === "cancelled",
+  };
+}
+
+/** Advisory preview only: reserveRefund rechecks every quantity/capacity under locks. */
+export async function getRefundEligibility(
+  c: PoolClient,
+  orderId: string,
+  actor: Actor,
+) {
+  owner(actor);
+  const order = await lockedOrder(c, orderId);
+  const path = await refundBranch(c, order);
+  const fundingRows = await c.query(
+    "SELECT f.*,coalesce((SELECT sum(r.amount_minor) FROM refunds r WHERE r.funding_event_id=f.id AND r.status NOT IN ('requested','failed')),0) used_minor FROM funding_events f WHERE f.order_id=$1 AND f.verified=true ORDER BY f.created_at,f.id",
+    [orderId],
+  );
+  const funding = fundingRows.rows.map((f) => ({
+    id: f.id as string,
+    source: f.source as string,
+    amount_minor: money(f.amount_minor),
+    remaining_minor: money(f.amount_minor) - money(f.used_minor),
+  }));
+  const shippingUsed = await c.query(
+    "SELECT coalesce(sum(shipping_minor),0) amount FROM refunds WHERE order_id=$1 AND status NOT IN ('requested','failed')",
+    [orderId],
+  );
+  const rows = await c.query(
+    "SELECT * FROM order_items WHERE order_id=$1 ORDER BY id",
+    [orderId],
+  );
+  const items = [];
+  for (const item of rows.rows) {
+    const used = await c.query(
+      "SELECT coalesce(sum(ri.quantity),0) qty FROM refund_items ri JOIN refunds r ON r.id=ri.refund_id WHERE ri.order_item_id=$1 AND r.status NOT IN ('requested','failed')",
+      [item.id],
+    );
+    const inspected = await c.query(
+      "SELECT coalesce(sum(ri.quantity),0) qty FROM return_items ri WHERE ri.order_item_id=$1 AND ri.received_at IS NOT NULL AND ri.inspection IS NOT NULL",
+      [item.id],
+    );
+    const eligible = path.cancellation_refund
+      ? item.quantity
+      : Number(inspected.rows[0].qty);
+    const remaining = Math.max(0, eligible - Number(used.rows[0].qty));
+    const allocations = await c.query(
+      "SELECT u.gross_minor,u.discount_minor FROM order_item_unit_allocations u WHERE u.order_item_id=$1 AND NOT EXISTS(SELECT 1 FROM refund_unit_allocations ru JOIN refunds r ON r.id=ru.refund_id WHERE ru.order_item_id=u.order_item_id AND ru.unit_index=u.unit_index AND r.status NOT IN ('requested','failed')) ORDER BY u.unit_index LIMIT $2",
+      [item.id, remaining],
+    );
+    const netUnits: number[] = allocations.rows.length
+      ? allocations.rows.map(
+          (u) => money(u.gross_minor) - money(u.discount_minor),
+        )
+      : Array.from({ length: remaining }, () => money(item.unit_minor));
+    items.push({
+      order_item_id: item.id as string,
+      sku: item.sku_snapshot as string,
+      name: item.name_snapshot as string,
+      purchased_quantity: item.quantity as number,
+      eligible_quantity: eligible as number,
+      committed_quantity: Number(used.rows[0].qty),
+      remaining_quantity: remaining,
+      remaining_minor: netUnits.reduce((sum, n) => sum + n, 0),
+      unit_net_minors: netUnits,
+    });
+  }
+  const shipping = Math.max(
+    0,
+    money(order.delivery_minor) - money(shippingUsed.rows[0].amount),
+  );
+  return {
+    branch: path.branch,
+    requires_cancellation: path.requires_cancellation,
+    reason:
+      funding.length === 0
+        ? "No verified customer funding is available to refund."
+        : path.requires_cancellation
+          ? "Approve cancellation of this unshipped order before reserving a refund."
+          : path.cancellation_refund
+            ? "Cancelled before dispatch: no physical return is required."
+            : "Delivered items require authorized receipt and inspection before refund approval.",
+    remaining_shipping_minor: shipping,
+    remaining_total_minor: items.some((item) => item.remaining_quantity > 0)
+      ? Math.min(
+          funding.reduce((sum, f) => sum + f.remaining_minor, 0),
+          items.reduce((sum, i) => sum + i.remaining_minor, 0) + shipping,
+        )
+      : 0,
+    funding,
+    items,
+  };
+}
+
 export type RefundInput = {
   order_id: string;
   funding_event_id: string;
@@ -716,6 +862,12 @@ export async function reserveRefund(
         "REFUND_CAPACITY",
         "Shipping refund exceeds capacity",
       );
+      const path = await refundBranch(c, o);
+      need(
+        !path.requires_cancellation,
+        "CANCELLATION_REQUIRED",
+        "Approve cancellation of the unshipped order before refunding it",
+      );
       const lines = [];
       const seen = new Set<string>();
       for (const item of [...input.items].sort((x, y) =>
@@ -741,7 +893,7 @@ export async function reserveRefund(
         );
         const quantityUsed = Number(prior.rows[0].quantity);
         let eligible = i.quantity;
-        if (o.status !== "cancelled") {
+        if (!path.cancellation_refund) {
           const received = await c.query(
             "SELECT coalesce(sum(ri.quantity),0) qty FROM return_items ri JOIN returns r ON r.id=ri.return_id WHERE ri.order_item_id=$1 AND ri.received_at IS NOT NULL AND ri.inspection IS NOT NULL",
             [i.id],
@@ -751,7 +903,7 @@ export async function reserveRefund(
         need(
           quantityUsed + item.quantity <= eligible,
           "REFUND_QUANTITY",
-          "Quantity exceeds inspected/cancelled eligible units",
+          "Quantity exceeds inspected returned units or eligible unshipped cancellation units",
         );
         // Persisted per-unit allocation prevents later price/discount edits changing partial refunds.
         const allocated = await c.query(

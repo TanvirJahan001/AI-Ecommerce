@@ -29,14 +29,16 @@ test("MFA-authenticated owner operates inventory and reviews commercial queues",
   const variant = data.inventory.find(
     (v: { sku: string }) => v.sku === "CHG-30C",
   );
-  await page.getByLabel("Variant ID", { exact: true }).fill(variant.id);
-  await page.getByLabel("Quantity", { exact: true }).fill("1");
+  await page
+    .getByRole("button", { name: "Record stock for CHG-30C", exact: true })
+    .click();
+  await page.getByLabel("Quantity received", { exact: true }).fill("1");
   await page
     .getByLabel("Reason / receipt reference")
     .fill("Fictional browser receipt verification");
-  await page.getByRole("button", { name: "Record movement" }).click();
+  await page.getByRole("button", { name: "Save stock movement" }).click();
   await expect(page.getByRole("status")).toContainText(
-    "Action recorded successfully",
+    "Receipt saved for CHG-30C",
   );
   const refreshed = await (
     await page.request.get("/api/store?resource=admin")
@@ -53,11 +55,11 @@ test("MFA-authenticated owner operates inventory and reviews commercial queues",
   });
   await page.getByRole("button", { name: "Orders", exact: true }).click();
   await page
-    .getByRole("button", { name: /View order / })
+    .getByRole("button", { name: /Open Order / })
     .first()
     .click();
   await expect(
-    page.getByRole("heading", { name: "Order detail", exact: true }),
+    page.getByRole("heading", { name: /^Order detail ·/ }),
   ).toBeVisible();
   await page.screenshot({
     path: "artifacts/admin-order-detail.png",
@@ -67,7 +69,16 @@ test("MFA-authenticated owner operates inventory and reviews commercial queues",
     .getByRole("button", { name: "Returns & refunds", exact: true })
     .click();
   await expect(
-    page.getByRole("heading", { name: "Return items & inspection" }),
+    page.getByRole("heading", {
+      name: "Find an order for after-sales support",
+    }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: /Open Order / })
+    .first()
+    .click();
+  await expect(
+    page.getByRole("heading", { name: "Returns and inspection", exact: true }),
   ).toBeVisible();
   await page.screenshot({
     path: "artifacts/admin-returns-refunds.png",
@@ -117,7 +128,7 @@ test("owner content and discounts persist and become visible to shoppers", async
   await page.getByRole("button", { name: "Discounts", exact: true }).click();
   const code = `BROWSER${Date.now()}`;
   await page.getByLabel("Code", { exact: true }).fill(code);
-  await page.getByLabel("Amount (poisha)", { exact: true }).fill("1000");
+  await page.getByLabel("Amount (BDT)", { exact: true }).fill("10.00");
   await page.getByLabel("Usage limit", { exact: true }).fill("1");
   await page
     .getByLabel("Ends at (ISO date/time)", { exact: true })
@@ -157,7 +168,7 @@ test("owner configures a local delivery rate through Settings", async ({
   await page
     .getByLabel("Delivery district", { exact: true })
     .fill("Fictional test district");
-  await page.getByLabel("Delivery fee (poisha)", { exact: true }).fill("7000");
+  await page.getByLabel("Delivery fee (BDT)", { exact: true }).fill("70.50");
   await page.getByRole("button", { name: "Save configuration" }).click();
   await expect(page.getByRole("status")).toContainText(
     "Action recorded successfully",
@@ -171,7 +182,7 @@ test("owner configures a local delivery rate through Settings", async ({
         (r: { district: string }) => r.district === "Fictional test district",
       ).fee_minor,
     ),
-  ).toBe(7000);
+  ).toBe(7050);
 });
 
 test("owner drafts, specifies and publishes a SKU without reassignment to another family", async ({

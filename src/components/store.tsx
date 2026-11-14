@@ -1,5 +1,8 @@
 "use client";
 import Link from "next/link";
+import Specifications from "./specifications";
+import AccessState, { friendlyAccessMessage } from "./access-state";
+import { displayBdt } from "@/lib/money-input";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
@@ -40,13 +43,21 @@ type Cart = {
 };
 export type JsonRow = Record<string, unknown>;
 export function money(value: unknown) {
-  return new Intl.NumberFormat("en-BD", {
-    style: "currency",
-    currency: "BDT",
-  }).format(Number(value || 0) / 100);
+  return displayBdt(String(value ?? 0));
+}
+export class ApiError extends Error {
+  constructor(
+    public code: string,
+    public status: number,
+    message: string,
+  ) {
+    super(message);
+  }
 }
 export function label(value: unknown) {
-  return String(value ?? "").replaceAll("_", " ");
+  return String(value ?? "")
+    .replace(/_minor$/, " (BDT)")
+    .replaceAll("_", " ");
 }
 export async function api<T>(
   resource?: string,
@@ -61,17 +72,20 @@ export async function api<T>(
   });
   const result = await response.json();
   if (!response.ok)
-    throw new Error(
-      result.message ||
-        result.error?.message ||
-        result.error ||
-        "Unable to complete this action. Please try again.",
+    throw new ApiError(
+      result.code ?? "OPERATION_FAILED",
+      response.status,
+      friendlyAccessMessage(result.code) ??
+        (result.message && !/^[A-Z_]+$/.test(result.message)
+          ? result.message
+          : "This action could not be completed. Refresh the record and try again."),
     );
   return result as T;
 }
 export function useResource<T>(resource: string) {
   const [data, setData] = useState<T>();
   const [error, setError] = useState("");
+  const [errorCode, setErrorCode] = useState<string>();
   const [version, setVersion] = useState(0);
   useEffect(() => {
     let alive = true;
@@ -80,16 +94,21 @@ export function useResource<T>(resource: string) {
         if (alive) {
           setData(result);
           setError("");
+          setErrorCode(undefined);
         }
       })
       .catch((err) => {
-        if (alive) setError(String(err.message));
+        if (alive) {
+          setError(String(err.message));
+          setErrorCode(err.code);
+          setData(undefined);
+        }
       });
     return () => {
       alive = false;
     };
   }, [resource, version]);
-  return { data, error, reload: () => setVersion((v) => v + 1) };
+  return { data, error, errorCode, reload: () => setVersion((v) => v + 1) };
 }
 export function Shell({ children }: { children: ReactNode }) {
   return (
@@ -503,18 +522,7 @@ function ProductDetails({ product }: { product: Product }) {
                 : "No model-specific compatibility claim. Check the specifications before ordering."}
             </p>
             <h3>Specifications</h3>
-            <dl className="spec-list">
-              {Object.entries(v.specifications || {}).map(([key, value]) => (
-                <div key={key}>
-                  <dt>{label(key)}</dt>
-                  <dd>
-                    {typeof value === "object"
-                      ? JSON.stringify(value)
-                      : String(value)}
-                  </dd>
-                </div>
-              ))}
-            </dl>
+            <Specifications values={v.specifications || {}} />
             <button onClick={add} disabled={busy || v.available < 1}>
               {busy ? "Adding…" : "Add to cart"}
             </button>{" "}
@@ -531,7 +539,7 @@ function ProductDetails({ product }: { product: Product }) {
   );
 }
 export function CartPage() {
-  const { data, error, reload } = useResource<Cart>("resource=cart");
+  const { data, error, errorCode, reload } = useResource<Cart>("resource=cart");
   const [failure, setFailure] = useState("");
   async function quantity(variant_id: string, value: string) {
     try {
@@ -558,10 +566,11 @@ export function CartPage() {
       <section className="section">
         <p className="eyebrow">YOUR SELECTION</p>
         <h1>Shopping cart</h1>
-        <Notice error={error || failure} />
-        {!data ? (
+        <Notice error={failure} />
+        {error ? <AccessState code={errorCode} next="/account" /> : null}
+        {!data && !error ? (
           <p>Loading your cart…</p>
-        ) : !data.items.length ? (
+        ) : !data ? null : !data.items.length ? (
           <div className="empty">
             <h2>Your cart is empty</h2>
             <p>Find an accessory that fits your device.</p>
@@ -1102,7 +1111,7 @@ export function OrderPage({ id }: { id: string }) {
 }
 
 export function AccountPage() {
-  const { data, error, reload } = useResource<{ orders: JsonRow[] }>(
+  const { data, error, errorCode, reload } = useResource<{ orders: JsonRow[] }>(
     "resource=account",
   );
   const [message, setMessage] = useState("");
@@ -1133,51 +1142,36 @@ export function AccountPage() {
         <h1>Order history</h1>
         <Notice error={failure || error} message={message} />
         {error ? (
-          <div className="card">
-            <p>Sign in to view orders linked to your verified account.</p>
-            <Link className="button" href="/login">
-              Sign in or create account
-            </Link>
-          </div>
+          <AccessState code={errorCode} next="/account" />
         ) : !data ? (
           <p>Loading your account…</p>
         ) : (
           <>
             <div className="card">
               {data.orders.length ? (
-                <div className="table-wrap">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Order</th>
-                        <th>Status</th>
-                        <th>Total</th>
-                        <th>Placed</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {data.orders.map((o) => (
-                        <tr key={String(o.id)}>
-                          <td>
-                            <Link href={`/orders/${o.id}`}>
-                              {String(o.id).slice(0, 8)}
-                            </Link>
-                          </td>
-                          <td>
-                            <span className="badge">{label(o.status)}</span>
-                          </td>
-                          <td>{money(o.total_minor)}</td>
-                          <td>
-                            {new Intl.DateTimeFormat("en-BD", {
-                              dateStyle: "medium",
-                              timeZone: "Asia/Dhaka",
-                            }).format(new Date(String(o.created_at)))}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                <ul className="order-history">
+                  {data.orders.map((o) => (
+                    <li className="history-card" key={String(o.id)}>
+                      <div>
+                        <Link href={`/orders/${o.id}`}>
+                          Order {String(o.id).slice(0, 8).toUpperCase()}
+                        </Link>
+                        <p className="muted">
+                          {new Intl.DateTimeFormat("en-BD", {
+                            dateStyle: "medium",
+                            timeZone: "Asia/Dhaka",
+                          }).format(new Date(String(o.created_at)))}
+                        </p>
+                      </div>
+                      <strong>{money(o.total_minor)}</strong>
+                      <span className="badge">{label(o.status)}</span>
+                      <details>
+                        <summary>Full order reference</summary>
+                        <code>{String(o.id)}</code>
+                      </details>
+                    </li>
+                  ))}
+                </ul>
               ) : (
                 <p>No linked orders yet.</p>
               )}

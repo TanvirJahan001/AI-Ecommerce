@@ -2,10 +2,19 @@
 import { useRef, useState } from "react";
 import type { FormEvent } from "react";
 import Link from "next/link";
+import AccessState from "./access-state";
 import { api, label, money, Notice, useResource } from "./store";
+import CatalogEditor, { type CatalogProduct } from "./catalog-editor";
+import InventoryPanel from "./inventory-panel";
+import OrderWorkspace from "./order-workspace";
+import CodWorkspace from "./cod-workspace";
+import { parseBdtInput } from "@/lib/money-input";
 import type { JsonRow } from "./store";
 type AdminData = {
   products: JsonRow[];
+  inventory_movements?: JsonRow[];
+  shipments?: JsonRow[];
+  remittance_allocations?: JsonRow[];
   inventory: JsonRow[];
   orders: JsonRow[];
   returns: JsonRow[];
@@ -44,8 +53,8 @@ const tabs = [
 type Tab = (typeof tabs)[number];
 export default function Admin() {
   const [tab, setTab] = useState<Tab>("Overview");
-  const [selectedOrder, setSelectedOrder] = useState("");
-  const { data, error, reload } = useResource<AdminData>("resource=admin");
+  const { data, error, errorCode, reload } =
+    useResource<AdminData>("resource=admin");
   const [failure, setFailure] = useState("");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
@@ -57,53 +66,26 @@ export default function Admin() {
     setBusy(true);
     setFailure("");
     setMessage("");
-    const form = new FormData(event.currentTarget);
-    const input: Record<string, unknown> = { action: "admin.command" };
-    for (const [k, v] of form.entries()) input[k] = v;
-    for (const k of ["quantity", "amount_minor", "shipping_minor"])
-      if (input[k]) input[k] = Number(input[k]);
-    if (input.command === "store.configure") {
-      input.cod_enabled = input.cod_enabled === "true";
-      input.online_enabled = input.online_enabled === "true";
-      input.enabled = input.enabled === "true";
-      input.fee_minor = Number(input.fee_minor);
-    }
-    if (input.command === "discount.save") {
-      input.amount_minor = Number(input.amount_minor);
-      input.usage_limit = Number(input.usage_limit);
-      input.active = input.active === "true";
-    }
-    if (input.command === "product.save") {
-      input.price_minor = Number(input.price_minor);
-      input.published = input.published === "true";
-    }
-    if (
-      input.command === "return.authorize" ||
-      input.command === "warranty.resolve"
-    )
-      input.approved = input.approved === "true";
-    if (input.command === "return.inspect") input.condition = input.outcome;
-    if (input.command === "cash.collect") input.evidence = input.reference;
-    if (input.command === "refund.reconcile") input.evidence = input.reason;
-    if (input.command === "refund.reserve")
-      input.items = [
-        {
-          order_item_id: input.order_item_id,
-          quantity: Number(input.quantity),
-        },
-      ];
-    if (input.command === "settlement")
-      input.allocations = [
-        {
-          collection_id: input.collection_id,
-          amount_minor: Number(input.amount_minor),
-        },
-      ];
-    const signature = JSON.stringify(input);
-    if (commandKey.current?.signature !== signature)
-      commandKey.current = { signature, key: crypto.randomUUID() };
-    input.idempotency_key = commandKey.current.key;
     try {
+      const form = new FormData(event.currentTarget);
+      const input: Record<string, unknown> = { action: "admin.command" };
+      for (const [k, v] of form.entries()) input[k] = v;
+      for (const k of ["quantity"]) if (input[k]) input[k] = Number(input[k]);
+      if (input.command === "store.configure") {
+        input.cod_enabled = input.cod_enabled === "true";
+        input.online_enabled = input.online_enabled === "true";
+        input.enabled = input.enabled === "true";
+        input.fee_minor = parseBdtInput(String(input.fee_minor));
+      }
+      if (input.command === "discount.save") {
+        input.amount_minor = parseBdtInput(String(input.amount_minor));
+        input.usage_limit = Number(input.usage_limit);
+        input.active = input.active === "true";
+      }
+      const signature = JSON.stringify(input);
+      if (commandKey.current?.signature !== signature)
+        commandKey.current = { signature, key: crypto.randomUUID() };
+      input.idempotency_key = commandKey.current.key;
       await api(undefined, input);
       commandKey.current = undefined;
       setMessage("Action recorded successfully.");
@@ -153,20 +135,7 @@ export default function Admin() {
         </header>
         <Notice error={error || failure} message={message} />
         {!data ? (
-          <div className="card">
-            <h2>{error ? "Owner access required" : "Loading workspace…"}</h2>
-            {error ? (
-              <>
-                <p>
-                  This workspace is restricted to the active store owner.
-                  Complete sign-in and MFA to continue.
-                </p>
-                <Link className="button" href="/login">
-                  Sign in
-                </Link>
-              </>
-            ) : null}
-          </div>
+          <AccessState code={errorCode} next="/admin" />
         ) : (
           <>
             {tab === "Overview" ? (
@@ -218,424 +187,33 @@ export default function Admin() {
               </>
             ) : null}
             {tab === "Catalog" ? (
-              <>
-                <section className="card">
-                  <h2>Products & SKUs</h2>
-                  <Rows
-                    rows={data.products.flatMap((p) =>
-                      Array.isArray(p.variants)
-                        ? p.variants.map((v: JsonRow) => ({
-                            ...v,
-                            name: p.name,
-                          }))
-                        : [p],
-                    )}
-                    fields={["id", "name", "sku", "label", "price_minor"]}
-                  />
-                </section>
-                <section className="card">
-                  <h2>Create or update a product</h2>
-                  <p className="muted">
-                    Use an existing product ID to update it; leave it empty for
-                    a new family and SKU. Product claims must be supported by
-                    verified specifications.
-                  </p>
-                  <form className="command-form" onSubmit={command}>
-                    <input type="hidden" name="command" value="product.save" />
-                    <Field
-                      label="Product ID (update only)"
-                      name="product_id"
-                      required={false}
-                    />
-                    <Field label="Name" name="name" />
-                    <Field label="URL slug" name="slug" />
-                    <Field label="Category" name="category" required={false} />
-                    <Field label="Brand" name="brand" required={false} />
-                    <Field label="SKU" name="sku" />
-                    <Field label="Variant label" name="label" />
-                    <Field
-                      label="Price (poisha; BDT 1 = 100)"
-                      name="price_minor"
-                      type="number"
-                    />
-                    <label className="wide">
-                      Description
-                      <textarea name="description" required />
-                    </label>
-                    <label>
-                      Publication
-                      <select name="published">
-                        <option value="false">Draft</option>
-                        <option value="true">Published</option>
-                      </select>
-                    </label>
-                    <button disabled={busy}>Save product</button>
-                  </form>
-                </section>
-                <section className="card">
-                  <h2>Variant specifications and fit</h2>
-                  <p className="muted">
-                    Compatibility belongs to this exact SKU. Use manufacturer or
-                    inspected source evidence. Saving replaces the selected
-                    variant’s models and specifications.
-                  </p>
-                  <form className="command-form" onSubmit={command}>
-                    <input
-                      type="hidden"
-                      name="command"
-                      value="variant.details"
-                    />
-                    <Field label="Variant ID" name="variant_id" />
-                    <Field
-                      label="Verification source / reference"
-                      name="source"
-                    />
-                    <label className="wide">
-                      Compatible models (JSON array)
-                      <textarea
-                        name="models"
-                        defaultValue="[]"
-                        required
-                        placeholder='[{"brand":"Fictional","model":"Phone Z","model_number":"Z-2025"}]'
-                      />
-                    </label>
-                    <label className="wide">
-                      Structured specifications (JSON object)
-                      <textarea
-                        name="specifications"
-                        defaultValue="{}"
-                        required
-                        placeholder='{"output_connector":"USB-C","protocols":["USB Power Delivery"],"max_output_w":30}'
-                      />
-                    </label>
-                    <label className="wide">
-                      Product media (optional JSON array)
-                      <textarea
-                        name="media"
-                        defaultValue="[]"
-                        placeholder='[{"url":"https://example.test/image.jpg","alt":"Clear case front view"}]'
-                      />
-                    </label>
-                    <button disabled={busy}>Save variant details</button>
-                  </form>
-                </section>
-              </>
+              <CatalogEditor
+                products={data.products as unknown as CatalogProduct[]}
+                onSaved={reload}
+              />
             ) : null}
             {tab === "Inventory" ? (
-              <>
-                <section className="card">
-                  <h2>Stock by SKU</h2>
-                  <p className="muted">
-                    Confirmed orders retain their stock commitment until
-                    dispatch or valid cancellation.
-                  </p>
-                  <Rows
-                    rows={data.inventory.map((v) => ({
-                      ...v,
-                      available:
-                        Number(v.sellable_qty) - Number(v.committed_qty),
-                    }))}
-                    fields={[
-                      "id",
-                      "sku",
-                      "sellable_qty",
-                      "committed_qty",
-                      "quarantined_qty",
-                      "available",
-                    ]}
-                  />
-                </section>
-                <section className="card">
-                  <h2>Record a stock movement</h2>
-                  <form className="command-form" onSubmit={command}>
-                    <label>
-                      Movement
-                      <select name="command">
-                        <option value="stock.receipt">Receive stock</option>
-                        <option value="stock.adjust">Adjust stock</option>
-                      </select>
-                    </label>
-                    <Field label="Variant ID" name="variant_id" />
-                    <Field label="Quantity" name="quantity" type="number" />
-                    <Field label="Reason / receipt reference" name="reason" />
-                    <button disabled={busy}>Record movement</button>
-                  </form>
-                </section>
-              </>
+              <InventoryPanel
+                products={data.products as unknown as CatalogProduct[]}
+                inventory={data.inventory}
+                movements={data.inventory_movements || []}
+                onSaved={reload}
+              />
             ) : null}
             {tab === "Orders" ? (
-              <>
-                <section className="card">
-                  <h2>Orders</h2>
-                  <Rows
-                    rows={data.orders}
-                    fields={[
-                      "id",
-                      "guest_name",
-                      "status",
-                      "payment_method",
-                      "total_minor",
-                    ]}
-                    onSelect={(r) => setSelectedOrder(String(r.id))}
-                  />
-                </section>
-                {selectedOrder ? (
-                  <section className="card">
-                    <h2>Order detail</h2>
-                    <p className="mono">{selectedOrder}</p>
-                    {data.orders
-                      .filter((o) => o.id === selectedOrder)
-                      .map((o) => (
-                        <div key={String(o.id)}>
-                          <p>
-                            <span className="badge">{label(o.status)}</span> ·{" "}
-                            {label(o.payment_method)} · {money(o.total_minor)}
-                          </p>
-                          <p>
-                            {String(o.guest_name)} · {String(o.guest_phone)}
-                          </p>
-                          <h3>Delivery snapshot</h3>
-                          <p>
-                            {typeof o.address_snapshot === "object"
-                              ? Object.entries(o.address_snapshot as JsonRow)
-                                  .map(([k, v]) => `${label(k)}: ${String(v)}`)
-                                  .join(" · ")
-                              : String(o.address_snapshot || "")}
-                          </p>
-                        </div>
-                      ))}
-                    <Rows
-                      rows={(data.order_items || []).filter(
-                        (i) => i.order_id === selectedOrder,
-                      )}
-                      fields={[
-                        "id",
-                        "sku_snapshot",
-                        "name_snapshot",
-                        "quantity",
-                        "unit_minor",
-                      ]}
-                    />
-                  </section>
-                ) : null}
-                <section className="card">
-                  <h2>Order items</h2>
-                  <Rows
-                    rows={data.order_items || []}
-                    fields={[
-                      "id",
-                      "order_id",
-                      "sku_snapshot",
-                      "name_snapshot",
-                      "quantity",
-                      "unit_minor",
-                    ]}
-                  />
-                </section>
-                <section className="card">
-                  <h2>Process an order</h2>
-                  <form className="command-form" onSubmit={command}>
-                    <label>
-                      Order ID
-                      <input
-                        name="order_id"
-                        value={selectedOrder}
-                        onChange={(e) => setSelectedOrder(e.target.value)}
-                        required
-                      />
-                    </label>
-                    <label>
-                      Action
-                      <select name="command">
-                        <option value="cod.confirm">Confirm COD</option>
-                        <option value="dispatch">Dispatch shipment</option>
-                        <option value="cancel">Approve cancellation</option>
-                        <option value="shipment.update">
-                          Update delivery status
-                        </option>
-                      </select>
-                    </label>
-                    <label>
-                      Delivery status
-                      <select name="status">
-                        <option value="delivered">Delivered</option>
-                        <option value="delivery_failed">Delivery failed</option>
-                        <option value="retry_scheduled">Retry scheduled</option>
-                        <option value="return_to_origin">
-                          Return to origin
-                        </option>
-                        <option value="returned_to_store">
-                          Returned to store
-                        </option>
-                      </select>
-                    </label>
-                    <Field
-                      label="Tracking / evidence reference"
-                      name="tracking_ref"
-                      required={false}
-                    />
-                    <Field label="Reason" name="reason" />
-                    <button disabled={busy}>Apply action</button>
-                  </form>
-                </section>
-              </>
+              <OrderWorkspace data={data} onSaved={reload} />
             ) : null}
             {tab === "Returns & refunds" ? (
               <>
-                <section className="card">
-                  <h2>Returns & inspection</h2>
-                  <Rows
-                    rows={data.returns}
-                    fields={["id", "order_id", "status", "reason"]}
-                  />
-                </section>
-                <section className="card">
-                  <h2>Return items & inspection</h2>
-                  <Rows
-                    rows={data.return_items || []}
-                    fields={[
-                      "id",
-                      "return_id",
-                      "order_item_id",
-                      "quantity",
-                      "inspection",
-                      "disposition",
-                    ]}
-                  />
-                </section>
-                <section className="card">
-                  <h2>Verified payment funding</h2>
-                  <Rows
-                    rows={data.funding_events || []}
-                    fields={["id", "order_id", "source", "amount_minor"]}
-                  />
-                </section>
-                <section className="card">
-                  <h2>Refund ledger</h2>
-                  <Rows
-                    rows={data.refunds}
-                    fields={["id", "order_id", "status", "amount_minor"]}
-                  />
-                </section>
-                <section className="card">
-                  <h2>Warranty claims</h2>
-                  <Rows
-                    rows={data.warranty_claims || []}
-                    fields={[
-                      "id",
-                      "order_item_id",
-                      "status",
-                      "reason",
-                      "resolution",
-                    ]}
-                  />
-                </section>
-                <section className="card">
-                  <h2>Resolve an after-sale request</h2>
-                  <form className="command-form" onSubmit={command}>
-                    <label>
-                      Action
-                      <select name="command">
-                        <option value="return.authorize">
-                          Authorize return
-                        </option>
-                        <option value="return.receive">
-                          Receive return into quarantine
-                        </option>
-                        <option value="return.inspect">Inspect return</option>
-                        <option value="refund.reserve">Approve refund</option>
-                        <option value="refund.submit">
-                          Submit refund payout
-                        </option>
-                        <option value="refund.reconcile">
-                          Reconcile payout
-                        </option>
-                        <option value="warranty.resolve">
-                          Resolve warranty claim
-                        </option>
-                      </select>
-                    </label>
-                    <label>
-                      Return decision
-                      <select name="approved">
-                        <option value="true">Approve</option>
-                        <option value="false">Reject</option>
-                      </select>
-                    </label>
-                    <Field label="Order ID" name="order_id" required={false} />
-                    <Field
-                      label="Order item ID"
-                      name="order_item_id"
-                      required={false}
-                    />
-                    <Field
-                      label="Item quantity"
-                      name="quantity"
-                      type="number"
-                      required={false}
-                    />
-                    <Field
-                      label="Refund delivery allocation (poisha)"
-                      name="shipping_minor"
-                      type="number"
-                      required={false}
-                    />
-                    <Field
-                      label="Return ID"
-                      name="return_id"
-                      required={false}
-                    />
-                    <Field
-                      label="Return item ID"
-                      name="return_item_id"
-                      required={false}
-                    />
-                    <Field
-                      label="Warranty claim ID"
-                      name="claim_id"
-                      required={false}
-                    />
-                    <Field
-                      label="Warranty resolution"
-                      name="resolution"
-                      required={false}
-                    />
-                    <Field
-                      label="Refund ID"
-                      name="refund_id"
-                      required={false}
-                    />
-                    <Field
-                      label="Funding event ID"
-                      name="funding_event_id"
-                      required={false}
-                    />
-                    <Field
-                      label="Amount (poisha)"
-                      name="amount_minor"
-                      type="number"
-                      required={false}
-                    />
-                    <label>
-                      Inspection / payout outcome
-                      <select name="outcome">
-                        <option value="sellable">Sellable</option>
-                        <option value="damaged">
-                          Damaged — keep unavailable
-                        </option>
-                        <option value="succeeded">Payout succeeded</option>
-                        <option value="failed">
-                          Definitive payout failure
-                        </option>
-                        <option value="unknown">
-                          Unknown — retain capacity
-                        </option>
-                      </select>
-                    </label>
-                    <Field label="Reason / payout reference" name="reason" />
-                    <button disabled={busy}>Record resolution</button>
-                  </form>
-                </section>
+                <p>
+                  Choose an order to manage its returns, refunds and warranty
+                  cases.
+                </p>
+                <OrderWorkspace
+                  data={data}
+                  onSaved={reload}
+                  mode="after-sales"
+                />
               </>
             ) : null}
             {tab === "Discounts" ? (
@@ -660,7 +238,7 @@ export default function Admin() {
                     <input type="hidden" name="command" value="discount.save" />
                     <Field label="Code" name="code" />
                     <Field
-                      label="Amount (poisha)"
+                      label="Amount (BDT)"
                       name="amount_minor"
                       type="number"
                     />
@@ -768,7 +346,7 @@ export default function Admin() {
                   </label>
                   <Field label="Delivery district" name="district" />
                   <Field
-                    label="Delivery fee (poisha)"
+                    label="Delivery fee (BDT)"
                     name="fee_minor"
                     type="number"
                   />
@@ -824,7 +402,18 @@ export default function Admin() {
                 />
                 <form className="command-form" onSubmit={command}>
                   <input type="hidden" name="command" value="support.note" />
-                  <Field label="Support order ID" name="order_id" />
+                  <label>
+                    Support order
+                    <select name="order_id" required>
+                      <option value="">Choose an order</option>
+                      {data.orders.map((o) => (
+                        <option key={String(o.id)} value={String(o.id)}>
+                          Order {String(o.id).slice(0, 8).toUpperCase()} ·{" "}
+                          {String(o.guest_name)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
                   <label className="wide">
                     Support note
                     <textarea name="note" maxLength={2000} required />
@@ -854,68 +443,7 @@ export default function Admin() {
             ) : null}
             {tab === "Reports" ? <Reports /> : null}
             {tab === "COD settlements" ? (
-              <>
-                <div className="notice">
-                  Customer cash collection and courier remittance are separate
-                  events. Delivery alone does not settle the receivable.
-                </div>
-                <section className="card">
-                  <h2>Customer collections</h2>
-                  <Rows
-                    rows={data.collections}
-                    fields={[
-                      "id",
-                      "order_id",
-                      "amount_minor",
-                      "collected_at",
-                      "proof_ref",
-                    ]}
-                  />
-                </section>
-                <section className="card">
-                  <h2>Courier remittances</h2>
-                  <Rows
-                    rows={data.remittances}
-                    fields={["reference", "amount_minor", "received_at"]}
-                  />
-                </section>
-                <section className="card">
-                  <h2>Record collection or remittance</h2>
-                  <form className="command-form" onSubmit={command}>
-                    <label>
-                      Action
-                      <select name="command">
-                        <option value="cash.collect">
-                          Verify customer cash collection
-                        </option>
-                        <option value="settlement">
-                          Record courier remittance
-                        </option>
-                      </select>
-                    </label>
-                    <Field
-                      label="Order ID (collection only)"
-                      name="order_id"
-                      required={false}
-                    />
-                    <Field
-                      label="Collection ID (remittance only)"
-                      name="collection_id"
-                      required={false}
-                    />
-                    <Field
-                      label="Amount (poisha)"
-                      name="amount_minor"
-                      type="number"
-                    />
-                    <Field
-                      label="Collection / remittance evidence reference"
-                      name="reference"
-                    />
-                    <button disabled={busy}>Record money movement</button>
-                  </form>
-                </section>
-              </>
+              <CodWorkspace data={data} onSaved={reload} />
             ) : null}
           </>
         )}
@@ -937,7 +465,13 @@ function Field({
   return (
     <label>
       {caption}
-      <input name={name} type={type} required={required} />
+      <input
+        name={name}
+        type={name.endsWith("_minor") ? "text" : type}
+        inputMode={name.endsWith("_minor") ? "decimal" : undefined}
+        pattern={name.endsWith("_minor") ? "[0-9]+([.][0-9]{1,2})?" : undefined}
+        required={required}
+      />
     </label>
   );
 }

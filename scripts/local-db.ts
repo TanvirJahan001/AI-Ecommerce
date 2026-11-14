@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import EmbeddedPostgres from "embedded-postgres";
 const server = new EmbeddedPostgres({
   databaseDir:
@@ -9,7 +10,12 @@ const server = new EmbeddedPostgres({
   postgresFlags: ["-h", "127.0.0.1"],
   autoRehydrateSymlinks: true,
 });
-await server.initialise();
+if (
+  !existsSync(
+    `${process.env.LOCAL_PG_DIR ?? `${process.cwd()}/.local-data/postgres`}/PG_VERSION`,
+  )
+)
+  await server.initialise();
 await server.start();
 try {
   await server.createDatabase("mobile_store");
