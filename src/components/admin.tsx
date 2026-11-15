@@ -9,6 +9,7 @@ import InventoryPanel from "./inventory-panel";
 import OrderWorkspace from "./order-workspace";
 import CodWorkspace from "./cod-workspace";
 import { parseBdtInput } from "@/lib/money-input";
+import { authClient } from "@/lib/auth-client";
 import type { JsonRow } from "./store";
 type AdminData = {
   products: JsonRow[];
@@ -58,6 +59,20 @@ export default function Admin() {
   const [failure, setFailure] = useState("");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
+  async function logout() {
+    setLoggingOut(true);
+    setFailure("");
+    try {
+      const result = await authClient.signOut();
+      if (result.error) throw new Error("Logout failed");
+      // Reload the document so authenticated client state is discarded.
+      window.location.replace("/login");
+    } catch {
+      setFailure("Unable to log out. Please try again.");
+      setLoggingOut(false);
+    }
+  }
   const commandKey = useRef<{ signature: string; key: string } | undefined>(
     undefined,
   );
@@ -122,6 +137,9 @@ export default function Admin() {
         <Link className="admin-store-link" href="/login">
           Account & security
         </Link>
+        <button type="button" disabled={loggingOut} onClick={logout}>
+          {loggingOut ? "Logging out…" : "Log out"}
+        </button>
       </aside>
       <main className="admin-main">
         <header className="admin-header">
