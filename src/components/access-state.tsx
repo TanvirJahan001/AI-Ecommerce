@@ -18,10 +18,24 @@ export function friendlyAccessMessage(code: string) {
 export default function AccessState({
   code,
   next = "/account",
+  onRetry,
 }: {
   code?: string;
   next?: string;
+  onRetry?: () => void;
 }) {
+  if (!code || !friendlyAccessMessage(code))
+    return (
+      <section className="card access-state">
+        <h2>Unable to load this page</h2>
+        <p>Please retry. A loading error does not mean you have signed out.</p>
+        <button
+          onClick={() => (onRetry ? onRetry() : window.location.reload())}
+        >
+          Try again
+        </button>
+      </section>
+    );
   const denied = code === "OWNER_REQUIRED" || code === "FORBIDDEN";
   const mfa = code === "MFA_ENROLLMENT_REQUIRED";
   return (

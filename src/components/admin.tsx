@@ -134,8 +134,10 @@ export default function Admin() {
           </button>
         </header>
         <Notice error={error || failure} message={message} />
-        {!data ? (
-          <AccessState code={errorCode} next="/admin" />
+        {!data && !error ? (
+          <p role="status">Loading administration…</p>
+        ) : !data ? (
+          <AccessState code={errorCode} next="/admin" onRetry={reload} />
         ) : (
           <>
             {tab === "Overview" ? (

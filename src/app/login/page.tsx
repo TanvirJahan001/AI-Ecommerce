@@ -1,5 +1,5 @@
 "use client";
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
@@ -23,6 +23,44 @@ export default function LoginPage() {
   const [enrollment, setEnrollment] = useState<Enrollment | null>(null);
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
+  const [checkingSession, setCheckingSession] = useState(true);
+  const [sessionCheckFailed, setSessionCheckFailed] = useState(false);
+  useEffect(() => {
+    const controller = new AbortController();
+    async function checkSession() {
+      try {
+        const response = await fetch("/api/auth/identity", {
+          cache: "no-store",
+          signal: controller.signal,
+        });
+        if (!response.ok) throw new Error("Session check failed");
+        const identity = await response.json();
+        if (controller.signal.aborted) return;
+        if (identity.authenticated) {
+          if (
+            identity.user.role === "owner" &&
+            !identity.user.twoFactorEnabled
+          ) {
+            setSetup(true);
+          } else {
+            router.replace(
+              intendedDestination() ??
+                (identity.user.role === "owner" ? "/admin" : "/account"),
+            );
+            return;
+          }
+        }
+        setCheckingSession(false);
+      } catch {
+        if (!controller.signal.aborted) {
+          setSessionCheckFailed(true);
+          setCheckingSession(false);
+        }
+      }
+    }
+    void checkSession();
+    return () => controller.abort();
+  }, [router]);
   async function finish() {
     const identity = await fetch("/api/auth/identity", {
       cache: "no-store",
@@ -111,6 +149,20 @@ export default function LoginPage() {
       setBusy(false);
     }
   }
+  if (checkingSession || sessionCheckFailed)
+    return (
+      <main className="shell section" style={{ maxWidth: 600 }}>
+        <Link href="/">← Store</Link>
+        <p role="status">
+          {sessionCheckFailed
+            ? "Unable to check your sign-in. Please retry."
+            : "Checking your sign-in…"}
+        </p>
+        {sessionCheckFailed && (
+          <button onClick={() => window.location.reload()}>Try again</button>
+        )}
+      </main>
+    );
   return (
     <main className="shell section" style={{ maxWidth: 600 }}>
       <Link href="/">← Store</Link>
