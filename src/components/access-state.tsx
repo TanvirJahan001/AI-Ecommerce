@@ -6,7 +6,7 @@ export function friendlyAccessMessage(code: string) {
       AUTHENTICATION_REQUIRED: "Sign in to continue.",
       LOGIN_REQUIRED: "Sign in to view your orders.",
       SESSION_EXPIRED:
-        "Your session has expired. Sign in again or recover guest order access.",
+        "Your shopping session has expired. Start a new shopping session to continue. You can recover guest order access if needed.",
       MFA_ENROLLMENT_REQUIRED:
         "Set up your authenticator to open the owner console.",
       OWNER_REQUIRED: "This account does not have owner access.",
@@ -39,7 +39,7 @@ export default function AccessState({
         {friendlyAccessMessage(code ?? "AUTHENTICATION_REQUIRED") ??
           "Sign in using an account with access to this page."}
       </p>
-      {!denied || mfa ? (
+      {code === "SESSION_EXPIRED" ? null : !denied || mfa ? (
         <Link
           className="button"
           href={`/login?next=${encodeURIComponent(next)}`}

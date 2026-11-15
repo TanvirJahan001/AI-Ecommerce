@@ -18,6 +18,7 @@ export default function LoginPage() {
   const [register, setRegister] = useState(false);
   const [challenge, setChallenge] = useState(false);
   const [recovery, setRecovery] = useState(false);
+  const [trustDevice, setTrustDevice] = useState(false);
   const [setup, setSetup] = useState(false);
   const [enrollment, setEnrollment] = useState<Enrollment | null>(null);
   const [message, setMessage] = useState("");
@@ -49,9 +50,11 @@ export default function LoginPage() {
           recovery && !enrollment
             ? await authClient.twoFactor.verifyBackupCode({
                 code: String(values.get("code")),
+                trustDevice,
               })
             : await authClient.twoFactor.verifyTotp({
                 code: String(values.get("code")),
+                trustDevice: challenge && trustDevice,
               });
         if (result.error)
           throw new Error(result.error.message || "Invalid code");
@@ -83,7 +86,11 @@ export default function LoginPage() {
               password,
               name: String(values.get("name")),
             })
-          : await authClient.signIn.email({ email, password });
+          : await authClient.signIn.email({
+              email,
+              password,
+              rememberMe: true,
+            });
         if (result.error)
           throw new Error(result.error.message || "Authentication failed");
         if (
@@ -117,8 +124,9 @@ export default function LoginPage() {
               : "Sign in"}
       </h1>
       <p>
-        Owner accounts require an authenticator code. A delivery phone number
-        does not verify an account or link previous orders.
+        Owner accounts require an authenticator code on untrusted devices. A
+        delivery phone number does not verify an account or link previous
+        orders.
       </p>
       <form className="card" onSubmit={submit}>
         {!challenge && !setup && (
@@ -212,6 +220,18 @@ export default function LoginPage() {
                 required
                 maxLength={recovery ? 64 : 6}
               />
+            </label>
+          </p>
+        )}
+        {challenge && (
+          <p>
+            <label>
+              <input
+                type="checkbox"
+                checked={trustDevice}
+                onChange={(e) => setTrustDevice(e.target.checked)}
+              />{" "}
+              Trust this device for 30 days (use only on a private device)
             </label>
           </p>
         )}
