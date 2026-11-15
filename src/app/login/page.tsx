@@ -163,6 +163,121 @@ export default function LoginPage() {
         )}
       </main>
     );
+  if (challenge)
+    return (
+      <main className="auth-page">
+        <Link className="auth-brand wordmark" href="/">
+          <span className="logo">M</span>
+          <span>
+            Mobile Accessories<small>YOUR STORE ACCOUNT</small>
+          </span>
+        </Link>
+        <section className="auth-panel" aria-labelledby="verification-title">
+          <div className="auth-icon" aria-hidden="true">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.6"
+            >
+              <path d="M12 3 4.5 6v5c0 4.5 3 8 7.5 10 4.5-2 7.5-5.5 7.5-10V6L12 3Z" />
+              <path d="m8.5 12 2.5 2.5 4.5-5" />
+            </svg>
+          </div>
+          <p className="eyebrow">ACCOUNT VERIFICATION</p>
+          <h1 id="verification-title">
+            {recovery ? "Use a recovery code" : "One more step"}
+          </h1>
+          <p className="auth-description">
+            {recovery
+              ? "Enter one of the recovery codes you saved when you set up your authenticator. Each code can only be used once."
+              : "Open your authenticator app and enter the 6-digit code for Mobile Accessories Store."}
+          </p>
+          <form
+            className="auth-verification-form"
+            onSubmit={submit}
+            aria-busy={busy}
+          >
+            <label className="auth-code-label" htmlFor="verification-code">
+              {recovery ? "Recovery code" : "Authenticator code"}
+            </label>
+            <input
+              key={recovery ? "recovery" : "totp"}
+              id="verification-code"
+              className={
+                recovery ? "auth-code auth-recovery-code" : "auth-code"
+              }
+              name="code"
+              type="text"
+              inputMode={recovery ? "text" : "numeric"}
+              autoComplete={recovery ? "off" : "one-time-code"}
+              autoCapitalize="none"
+              spellCheck={false}
+              pattern={recovery ? undefined : "[0-9]{6}"}
+              maxLength={recovery ? 64 : 6}
+              placeholder={recovery ? "Enter recovery code" : "000000"}
+              aria-describedby="verification-help verification-message"
+              autoFocus
+              required
+            />
+            <p id="verification-help" className="auth-help">
+              {recovery
+                ? "Keep your remaining recovery codes somewhere safe."
+                : "Use the current code shown in your app."}
+            </p>
+            <label className="auth-trust">
+              <input
+                type="checkbox"
+                checked={trustDevice}
+                onChange={(e) => setTrustDevice(e.target.checked)}
+              />
+              <span>
+                <strong>Trust this device for 30 days</strong>
+                <small>
+                  Skip this step next time. Only on a device you own.
+                </small>
+              </span>
+            </label>
+            <p
+              id="verification-message"
+              className={message ? "auth-feedback" : "auth-feedback-empty"}
+              role="status"
+              aria-live="polite"
+            >
+              {message}
+            </p>
+            <button
+              className="auth-verify-button"
+              disabled={busy}
+              type="submit"
+            >
+              {busy ? "Verifying…" : "Verify and continue"}
+            </button>
+          </form>
+          <div className="auth-alternative">
+            <p>
+              {recovery
+                ? "Have your authenticator available?"
+                : "Can’t access your authenticator?"}
+            </p>
+            <button
+              className="auth-text-button"
+              type="button"
+              disabled={busy}
+              onClick={() => {
+                setRecovery(!recovery);
+                setMessage("");
+              }}
+            >
+              {recovery ? "Use authenticator code" : "Use a recovery code"}
+            </button>
+          </div>
+        </section>
+        <Link className="auth-back" href="/">
+          ← Back to store
+        </Link>
+      </main>
+    );
   return (
     <main className="shell section" style={{ maxWidth: 600 }}>
       <Link href="/">← Store</Link>
