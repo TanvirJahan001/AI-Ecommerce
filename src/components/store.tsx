@@ -59,16 +59,40 @@ export function label(value: unknown) {
     .replace(/_minor$/, " (BDT)")
     .replaceAll("_", " ");
 }
-export async function api<T>(
+let pendingCatalog: Promise<unknown> | undefined;
+
+export function api<T>(
   resource?: string,
   payload?: Record<string, unknown>,
 ): Promise<T> {
-  const response = await fetch(`/api/store${resource ? `?${resource}` : ""}`, {
+  if (!payload && resource === "resource=catalog") {
+    pendingCatalog ??= request("/api/catalog").finally(() => {
+      pendingCatalog = undefined;
+    });
+    return pendingCatalog as Promise<T>;
+  }
+  return request<T>(`/api/store${resource ? `?${resource}` : ""}`, payload);
+}
+
+async function request<T>(
+  url: string,
+  payload?: Record<string, unknown>,
+): Promise<T> {
+  const response = await fetch(url, {
     method: payload ? "POST" : "GET",
     credentials: "same-origin",
     cache: "no-store",
     headers: payload ? { "Content-Type": "application/json" } : undefined,
     body: payload ? JSON.stringify(payload) : undefined,
+    ...(url === "/api/catalog" ? { signal: AbortSignal.timeout(15000) } : {}),
+  }).catch((error: unknown) => {
+    if (error instanceof Error && error.name === "TimeoutError")
+      throw new ApiError(
+        "CATALOG_TIMEOUT",
+        504,
+        "The catalog is taking too long to load. Please retry.",
+      );
+    throw error;
   });
   const result = await response.json();
   if (!response.ok)
@@ -131,7 +155,6 @@ export function Shell({ children }: { children: ReactNode }) {
             <Link href="/">Shop</Link>
             <Link href="/cart">Cart</Link>
             <Link href="/account">Account</Link>
-            <Link href="/admin">Admin</Link>
           </div>
         </nav>
       </header>
@@ -228,7 +251,7 @@ function ProductVisual({ variant, name }: { variant?: Variant; name: string }) {
   );
 }
 export function Storefront({ slug }: { slug?: string }) {
-  const { data, error } = useResource<{ products: Product[] }>(
+  const { data, error, reload } = useResource<{ products: Product[] }>(
     "resource=catalog",
   );
   const [search, setSearch] = useState("");
@@ -273,11 +296,13 @@ export function Storefront({ slug }: { slug?: string }) {
       {slug ? (
         <section className="section">
           <Link href="/">← All accessories</Link>
+          <Notice error={error} />
+          {error ? <button onClick={reload}>Retry catalog</button> : null}
           {selected ? (
             <ProductDetails product={selected} />
-          ) : (
+          ) : !error ? (
             <p>{data ? "This product is unavailable." : "Loading product…"}</p>
-          )}
+          ) : null}
         </section>
       ) : (
         <>
@@ -315,7 +340,13 @@ export function Storefront({ slug }: { slug?: string }) {
                 <p className="eyebrow">FIND YOUR ESSENTIALS</p>
                 <h2>Made for your daily connection</h2>
               </div>
-              <span className="muted">{filtered.length} products</span>
+              <span className="muted">
+                {data
+                  ? `${filtered.length} products`
+                  : error
+                    ? "Catalog unavailable"
+                    : "Loading products…"}
+              </span>
             </div>
             <div className="filters">
               <label>
@@ -402,8 +433,11 @@ export function Storefront({ slug }: { slug?: string }) {
               </label>
             </div>
             <Notice error={error} />
-            {!data && !error ? (
-              <p role="status">Loading catalog…</p>
+            {error ? <button onClick={reload}>Retry catalog</button> : null}
+            {!data ? (
+              !error ? (
+                <p role="status">Loading catalog…</p>
+              ) : null
             ) : filtered.length === 0 ? (
               <div className="empty">
                 <h3>No matching accessories</h3>

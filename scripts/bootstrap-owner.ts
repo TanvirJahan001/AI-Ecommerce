@@ -5,10 +5,11 @@ import { auth, authPool } from "../src/lib/auth";
 async function main() {
   if (
     process.env.NODE_ENV === "production" ||
-    process.env.OWNER_BOOTSTRAP_ENABLED !== "true"
+    (process.env.OWNER_BOOTSTRAP_ENABLED !== "true" &&
+      !process.argv.includes("--enable"))
   ) {
     throw new Error(
-      "Owner bootstrap requires OWNER_BOOTSTRAP_ENABLED=true in a local non-production environment.",
+      "Owner bootstrap is disabled. In a local non-production environment, run: npm run owner:bootstrap -- --enable",
     );
   }
   if (!stdin.isTTY)
@@ -67,7 +68,7 @@ async function main() {
       [result.user.id],
     );
     console.log(
-      "Owner created. Sign in at /login and enroll TOTP before admin access is enabled. Disable OWNER_BOOTSTRAP_ENABLED now.",
+      "Owner created. Sign in at /login and enroll TOTP before admin access is enabled. If you enabled OWNER_BOOTSTRAP_ENABLED in your environment, disable it now; --enable applies only to this command.",
     );
   } finally {
     await client.query(

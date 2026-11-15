@@ -171,6 +171,10 @@ function ProductEditor({
   const [preview, setPreview] = useState(false);
   const [savedProductId, setSavedProductId] = useState(product?.id);
   const [savedVariantId, setSavedVariantId] = useState(variant?.id);
+  const [savedListing, setSavedListing] = useState({
+    slug: product?.slug ?? "",
+    published: product?.published === true,
+  });
   const key = useRef("");
   const change = (field: string, value: unknown) =>
     setSpec((s) => ({ ...s, [field]: value }));
@@ -243,6 +247,7 @@ function ProductEditor({
         published: false,
       });
       setSavedProductId(saved.product_id);
+      setSavedListing({ slug, published: false });
       const refreshed = await api<{ products: CatalogProduct[] }>(
         "resource=admin",
       );
@@ -250,11 +255,12 @@ function ProductEditor({
         (p) => p.id === saved.product_id,
       );
       const savedVariant = savedProduct?.variants.find((v) => v.sku === sku);
-      if (!savedVariant)
+      if (!savedProduct || !savedVariant)
         throw Error(
           "The draft was saved, but the SKU could not be reloaded. Refresh the catalog.",
         );
       setSavedVariantId(savedVariant.id);
+      setSavedListing({ slug: savedProduct.slug, published: false });
       if (source.trim().length >= 3) {
         const controlled = [
           ...stringFields,
@@ -277,7 +283,7 @@ function ProductEditor({
           media,
         });
       }
-      if (publish)
+      if (publish) {
         await api(undefined, {
           action: "admin.command",
           command: "product.save",
@@ -294,6 +300,8 @@ function ProductEditor({
           price_minor: priceMinor,
           published: true,
         });
+        setSavedListing({ slug: savedProduct.slug, published: true });
+      }
       key.current = "";
       onSaved();
       setMessage(
@@ -339,6 +347,14 @@ function ProductEditor({
         </button>
       </div>
       <Notice error={error} message={message} />
+      {savedProductId && !savedListing.published ? (
+        <p>
+          This product is a draft and is hidden from the storefront. Use Preview
+          product to review it here, then Save and publish when its
+          specifications and verification source are ready. Record stock in
+          Inventory before selling.
+        </p>
+      ) : null}
       {product ? (
         <div className="button-row">
           {product.variants.map((v) => (
@@ -816,8 +832,8 @@ function ProductEditor({
           >
             Save and publish
           </button>
-          {savedProductId ? (
-            <Link href={`/products/${slug}`} target="_blank">
+          {savedProductId && savedListing.published ? (
+            <Link href={`/products/${savedListing.slug}`} target="_blank">
               Open storefront page
             </Link>
           ) : null}

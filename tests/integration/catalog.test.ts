@@ -1,10 +1,11 @@
 import { testPoolConfig } from "../../src/lib/database-config";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { Pool } from "pg";
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { saveVariantDetails } from "../../src/modules/catalog/commands";
 import { transaction } from "../../src/modules/commerce/service";
+import { catalog } from "../../src/modules/store/catalog";
 const schema = `catalog_${randomUUID().replaceAll("-", "")}`;
 const admin = new Pool(testPoolConfig());
 const pool = new Pool(testPoolConfig(process.env, schema));
@@ -280,5 +281,79 @@ describe("owner catalog persistence", () => {
         ),
       ),
     ).rejects.toThrow("exceeds");
+  });
+  it("batch-loads the catalog while preserving draft privacy, active SKUs, media order and sourced facts", async () => {
+    const published = (
+      await pool.query(
+        "INSERT INTO products(slug,name,published) VALUES('batch-public','Batch public fixture',true) RETURNING id",
+      )
+    ).rows[0];
+    const draft = (
+      await pool.query(
+        "INSERT INTO products(slug,name,published) VALUES('batch-draft','Batch draft fixture',false) RETURNING id",
+      )
+    ).rows[0];
+    const active = (
+      await pool.query(
+        "INSERT INTO variants(product_id,sku,label,price_minor,sellable_qty,committed_qty) VALUES($1,'BATCH-A','Blue',25350,4,1) RETURNING id",
+        [published.id],
+      )
+    ).rows[0];
+    await pool.query(
+      "INSERT INTO variants(product_id,sku,label,price_minor,active) VALUES($1,'BATCH-HIDDEN','Inactive',100,false),($2,'BATCH-DRAFT','Draft',200,true)",
+      [published.id, draft.id],
+    );
+    await pool.query(
+      "INSERT INTO specifications(variant_id,attribute,value,source) VALUES($1,'color','\"Blue\"','Reviewed label')",
+      [active.id],
+    );
+    await pool.query(
+      "INSERT INTO product_media(product_id,variant_id,url,alt,sort_order) VALUES($1,$2,'/samples/second.svg','Second',2),($1,$2,'/samples/cover.svg','Cover',1)",
+      [published.id, active.id],
+    );
+    const model = (
+      await pool.query(
+        "INSERT INTO device_models(brand,model,model_number) VALUES('Fictional','Batch phone','B-1') RETURNING id",
+      )
+    ).rows[0];
+    await pool.query(
+      "INSERT INTO compatibility(variant_id,device_model_id,source) VALUES($1,$2,'Reviewed fit')",
+      [active.id, model.id],
+    );
+    const queries = vi.spyOn(pool, "query");
+    try {
+      const publicListing = await catalog(pool);
+      expect(queries).toHaveBeenCalledTimes(5);
+      expect(publicListing.some((product) => product.id === draft.id)).toBe(
+        false,
+      );
+      expect(
+        publicListing.find((product) => product.id === published.id),
+      ).toMatchObject({
+        variants: [
+          {
+            sku: "BATCH-A",
+            price_minor: 25350,
+            available: 3,
+            media: [
+              { url: "/samples/cover.svg", alt: "Cover" },
+              { url: "/samples/second.svg", alt: "Second" },
+            ],
+            models: [
+              { brand: "Fictional", model: "Batch phone", model_number: "B-1" },
+            ],
+            compatibility: ["Fictional Batch phone"],
+            source: "Reviewed label",
+            specifications: { color: "Blue" },
+          },
+        ],
+      });
+      const privateListing = await catalog(pool, { includeDrafts: true });
+      expect(privateListing.some((product) => product.id === draft.id)).toBe(
+        true,
+      );
+    } finally {
+      queries.mockRestore();
+    }
   });
 });
